@@ -1,29 +1,42 @@
 # Message Engine
 
 [![CI](https://github.com/Innei/message-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/Innei/message-engine/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@innei/message-engine.svg)](https://www.npmjs.com/package/@innei/message-engine)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-`@earendil-works/message-engine` is an adapter-driven message pipeline for stateful AI agents. It preserves append-only conversation prefixes, incrementally maintains message indexes, supports a phased LobeChat-style context pipeline, and attributes tokens, cache usage, and cost to individual context sources.
+`@innei/message-engine` is an adapter-driven message pipeline for stateful AI agents. It preserves append-only conversation prefixes, incrementally maintains message indexes, supports a phased LobeChat-style context pipeline, and attributes tokens, cache usage, and cost to individual context sources.
 
-The core package does not depend on a particular agent runtime. Pi Agent Core is provided through the optional `@earendil-works/message-engine/adapters/pi` entry point.
+The core package does not depend on a particular agent runtime. Pi Agent Core is provided through the optional `@innei/message-engine/adapters/pi` entry point.
+
+## Features
+
+- Runtime-agnostic `MessageAdapter` — bring your own message type
+- Append-only prefix guard with strict blocking or generation invalidation
+- Incremental message indexes without rescanning the committed prefix
+- Phased processor pipeline with session-cached contributions
+- Opt-in token, cache, and cost attribution per source / module / processor
+- Standalone HTML telemetry reports and a live sunburst inspector
+- Optional Pi Agent Core adapter with OpenRouter session affinity and prompt-cache breakpoints
 
 ## Installation
 
 ```bash
-pnpm add @earendil-works/message-engine
+pnpm add @innei/message-engine
 ```
 
 For the Pi adapter:
 
 ```bash
-pnpm add @earendil-works/message-engine @earendil-works/pi-agent-core
+pnpm add @innei/message-engine @earendil-works/pi-agent-core
 ```
+
+Requires Node.js 22 or later.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  App["Kansoku or mx-core"] --> Adapter["MessageAdapter<Message>"]
+  App["Agent runtime"] --> Adapter["MessageAdapter<Message>"]
   Adapter --> Engine["SessionMessagesEngine"]
   Engine --> Index["Incremental message index"]
   Engine --> Pipeline["Phased processor pipeline"]
@@ -42,11 +55,7 @@ One engine instance owns one session. Its transcript, stable contribution cache,
 Define the message contract once at the application boundary:
 
 ```ts
-import {
-  SessionMessagesEngine,
-  fingerprint,
-  type MessageAdapter,
-} from '@earendil-works/message-engine';
+import { SessionMessagesEngine, fingerprint, type MessageAdapter } from '@innei/message-engine';
 
 interface AppMessage {
   content: string;
@@ -108,7 +117,7 @@ Processors execute in a fixed phase order. `before` and `after` constraints prov
 | `finalize`          | Validate and finalize provider input        |
 
 ```ts
-import type { MessageEngineModule } from '@earendil-works/message-engine';
+import type { MessageEngineModule } from '@innei/message-engine';
 
 const runtimeModule: MessageEngineModule<AppMessage, Initial, Step, Services> = {
   id: 'runtime',
@@ -134,7 +143,8 @@ const runtimeModule: MessageEngineModule<AppMessage, Initial, Step, Services> = 
 };
 ```
 
-Session-cached processors are evaluated once and replay their attributed contributions on later turns. They must only call `contribute`; structural mutation from a session-cached processor is rejected because it cannot be replayed safely.
+> [!IMPORTANT]
+> Session-cached processors are evaluated once and replay their attributed contributions on later turns. They must only call `contribute`. Structural mutation from a session-cached processor is rejected because it cannot be replayed safely.
 
 The abstract providers `BaseSystemPromptProvider`, `BaseFirstUserContentProvider`, `BaseLastUserContentProvider`, and `BaseVirtualTailProvider` cover the common contribution locations while retaining the full processor API for product-specific stages.
 
@@ -212,7 +222,8 @@ Each `TurnTokenSnapshot` includes:
 - internal prefix reuse ratio and provider cache-read/write metrics;
 - normalized provider usage and versioned cost estimates when pricing is available.
 
-Raw segment text is excluded from snapshots and telemetry by default. Set `includeContent: true` only for controlled local debugging where prompt disclosure is acceptable.
+> [!WARNING]
+> Raw segment text is excluded from snapshots and telemetry by default. Set `includeContent: true` only for controlled local debugging where prompt disclosure is acceptable.
 
 Telemetry sinks receive `turn-compiled`, `usage-recorded`, and `session-summary` events. Sink failures are fail-open by default; set `strictTelemetry` when telemetry delivery must fail the operation.
 
@@ -222,7 +233,7 @@ The devtools entry point converts a session summary into standalone HTML with so
 
 ```ts
 import { writeFile } from 'node:fs/promises';
-import { renderSessionTelemetryHtml } from '@earendil-works/message-engine/devtools';
+import { renderSessionTelemetryHtml } from '@innei/message-engine/devtools';
 
 const summary = engine.getTokenSummary();
 if (summary) {
@@ -240,7 +251,7 @@ import {
   createPiOpenRouterPromptCacheBridge,
   createPiSystemPromptBridge,
   withPiOpenRouterSessionAffinity,
-} from '@earendil-works/message-engine/adapters/pi';
+} from '@innei/message-engine/adapters/pi';
 
 const model = withPiOpenRouterSessionAffinity(openRouterModel);
 const promptCacheBridge = createPiOpenRouterPromptCacheBridge();
@@ -294,7 +305,10 @@ The repository includes a browser-based demo that runs a real Pi `Agent` through
 pnpm demo
 ```
 
-Open `http://127.0.0.1:4173`, select an OpenRouter model, and enter a key in the runtime panel. The key is stored in the current browser's `localStorage`, sent only to the local Vite middleware for the active request, and cleared from server session state when the turn settles. It is never written to repository files; clearing the field removes the browser entry. Alternatively, start the demo with `OPENROUTER_API_KEY` in the local environment and leave the browser field empty.
+Open `http://127.0.0.1:4173`, select an OpenRouter model, and enter a key in the runtime panel.
+
+> [!NOTE]
+> The key is stored in the current browser's `localStorage`, sent only to the local Vite middleware for the active request, and cleared from server session state when the turn settles. It is never written to repository files; clearing the field removes the browser entry. Alternatively, start the demo with `OPENROUTER_API_KEY` in the local environment and leave the browser field empty.
 
 The lab verifies:
 
@@ -321,6 +335,14 @@ await registry.destroy(sessionId);
 ```
 
 `destroy()` aborts active compilation, emits and flushes the session summary, tears modules down in reverse registration order, and clears transcripts, indexes, and caches. Subsequent engine operations throw `EngineDestroyedError`.
+
+## Package exports
+
+| Import                              | Contents                                           |
+| ----------------------------------- | -------------------------------------------------- |
+| `@innei/message-engine`             | Engine, adapters, pipeline types, token accounting |
+| `@innei/message-engine/devtools`    | HTML report, chart data, sunburst model            |
+| `@innei/message-engine/adapters/pi` | `createPiMessageEngine` and OpenRouter/Pi bridges  |
 
 ## Development
 

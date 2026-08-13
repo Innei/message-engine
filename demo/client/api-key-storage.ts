@@ -1,4 +1,4 @@
-export const OPENROUTER_KEY_STORAGE_KEY = '@earendil-works/message-engine/demo/openrouter-key@1';
+export const OPENROUTER_KEY_STORAGE_KEY = '@innei/message-engine/demo/openrouter-key@1';
 
 const getBrowserStorage = (): Storage | undefined => {
   if (typeof window === 'undefined') return undefined;

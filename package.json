@@ -1,5 +1,5 @@
 {
-  "name": "@earendil-works/message-engine",
+  "name": "@innei/message-engine",
   "version": "0.1.0",
   "description": "Adapter-driven message pipeline, prefix cache guard, and token telemetry for AI agents",
   "keywords": [
