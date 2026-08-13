@@ -1,0 +1,88 @@
+{
+  "name": "@earendil-works/message-engine",
+  "version": "0.1.0",
+  "description": "Adapter-driven message pipeline, prefix cache guard, and token telemetry for AI agents",
+  "keywords": [
+    "agent",
+    "context",
+    "message-engine",
+    "pi-agent",
+    "prompt-cache",
+    "telemetry"
+  ],
+  "license": "MIT",
+  "author": "Innei <https://innei.in>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Innei/message-engine.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Innei/message-engine/issues"
+  },
+  "homepage": "https://github.com/Innei/message-engine#readme",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./devtools": {
+      "types": "./dist/devtools.d.ts",
+      "import": "./dist/devtools.js"
+    },
+    "./adapters/pi": {
+      "types": "./dist/adapters/pi-entry.d.ts",
+      "import": "./dist/adapters/pi-entry.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "check": "pnpm run format:check && pnpm run lint:readability && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run demo:build",
+    "demo": "vite --config demo/vite.config.ts",
+    "demo:build": "vite build --config demo/vite.config.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint:readability": "node scripts/check-no-nested-ternary.mjs",
+    "prepublishOnly": "pnpm run check",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": "^0.84.1"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-agent-core": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@earendil-works/pi-agent-core": "0.84.1",
+    "@earendil-works/pi-ai": "0.84.1",
+    "@types/node": "26.0.0",
+    "@types/react": "19.2.10",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.5",
+    "gpt-tokenizer": "3.4.0",
+    "prettier": "3.9.6",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "tsdown": "0.22.14",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3",
+    "vite": "8.2.1",
+    "vitest": "4.1.10"
+  },
+  "packageManager": "pnpm@11.20.0"
+}
