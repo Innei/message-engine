@@ -27,7 +27,7 @@ pnpm add @innei/message-engine
 For the Pi adapter:
 
 ```bash
-pnpm add @innei/message-engine @earendil-works/pi-agent-core
+pnpm add @innei/message-engine @earendil-works/pi-agent-core @earendil-works/pi-ai
 ```
 
 Requires Node.js 22 or later.
@@ -245,57 +245,90 @@ if (summary) {
 
 ## Pi Agent Core adapter
 
-```ts
-import {
-  createPiMessageEngine,
-  createPiOpenRouterPromptCacheBridge,
-  createPiSystemPromptBridge,
-  withPiOpenRouterSessionAffinity,
-} from '@innei/message-engine/adapters/pi';
+`createPiMessageEngine` binds the Pi `AgentMessage` adapter. Pass its transform into a Pi `Agent`:
 
-const model = withPiOpenRouterSessionAffinity(openRouterModel);
-const promptCacheBridge = createPiOpenRouterPromptCacheBridge();
-const systemPromptBridge = createPiSystemPromptBridge(baseSystemPrompt);
+```ts
+import { Agent } from '@earendil-works/pi-agent-core';
+import { createModels } from '@earendil-works/pi-ai';
+import { anthropicProvider } from '@earendil-works/pi-ai/providers/anthropic';
+import { createPiMessageEngine } from '@innei/message-engine/adapters/pi';
+
+const models = createModels();
+models.setProvider(anthropicProvider());
+const model = models.getModel('anthropic', 'claude-sonnet-4-6');
+if (!model) throw new Error('Model not found');
 
 const engine = createPiMessageEngine({
-  initial,
-  services,
-  sessionId,
-  strict: true,
-  modules,
-});
-
-const transformContext = engine.createTransformContext({
-  onCompiled: (result) => {
-    systemPromptBridge.capture(result);
-    promptCacheBridge.capture(result);
-  },
-  step: () => ({ iteration: currentIteration }),
-  onError: reportTransformError,
+  initial: {},
+  services: {},
+  sessionId: 'session-42',
 });
 
 const agent = new Agent({
-  initialState: { messages: [], model, systemPrompt: baseSystemPrompt, tools: [] },
-  onPayload: promptCacheBridge.apply,
-  sessionId,
-  transformContext,
-  streamFn: (requestModel, context, options) =>
-    stream(requestModel, systemPromptBridge.apply(context), options),
+  initialState: { model, systemPrompt: 'You are a helpful assistant.' },
+  streamFn: models.streamSimple.bind(models),
+  transformContext: engine.createTransformContext({
+    step: { iteration: 1 },
+  }),
 });
+
+await agent.prompt('Analyze this market.');
 ```
-
-When using OpenRouter, pass the same stable `sessionId` to Pi's stream options on every turn.
-The helper enables Pi to emit that value as `x-session-id`, which activates OpenRouter provider
-stickiness from the first successful request. OpenRouter limits the value to 256 characters.
-
-`createPiOpenRouterPromptCacheBridge` carries the engine's session-scoped `stable-prefix`
-boundary into Pi's final OpenRouter payload as an explicit `cache_control` breakpoint. This is
-important when a runtime also appends turn-scoped augmentation or an ephemeral virtual tail:
-those dynamic blocks remain outside the cached prefix instead of moving the automatic breakpoint.
 
 The returned transform follows Pi's non-throwing `transformContext` contract: failures are reported and the original message array is returned. Use `append`, `syncTranscript`, and `compileTurn` directly when strict errors must propagate to application control flow. Set `trustMessageIdentity: true` only if the Pi integration preserves immutable prefix object identities.
 
-Pi snapshots its system prompt before invoking `transformContext`. When the pipeline has `system`-phase providers, use `createPiSystemPromptBridge` as above so the compiled system prompt reaches the same provider request as the transformed messages.
+The OpenRouter helpers below are optional. Use them only when that provider needs session stickiness, a compiled system prompt, or an explicit cache breakpoint.
+
+When using OpenRouter, pass the same stable `sessionId` to Pi on every turn. `withPiOpenRouterSessionAffinity` tells Pi to emit that value as `x-session-id`, which activates provider stickiness from the first successful request. OpenRouter limits the value to 256 characters.
+
+```ts
+import { withPiOpenRouterSessionAffinity } from '@innei/message-engine/adapters/pi';
+
+const model = withPiOpenRouterSessionAffinity(openRouterModel);
+
+const agent = new Agent({
+  initialState: { model, systemPrompt },
+  sessionId,
+  streamFn: models.streamSimple.bind(models),
+  transformContext,
+});
+```
+
+Pi snapshots its system prompt before invoking `transformContext`. When the pipeline has `system`-phase providers, capture the compiled prompt and apply it in `streamFn`:
+
+```ts
+import { createPiSystemPromptBridge } from '@innei/message-engine/adapters/pi';
+
+const systemPromptBridge = createPiSystemPromptBridge(systemPrompt);
+
+const agent = new Agent({
+  initialState: { model, systemPrompt },
+  streamFn: (requestModel, context, options) =>
+    models.streamSimple(requestModel, systemPromptBridge.apply(context), options),
+  transformContext: engine.createTransformContext({
+    onCompiled: (result) => systemPromptBridge.capture(result),
+    step: { iteration: 1 },
+  }),
+});
+```
+
+`createPiOpenRouterPromptCacheBridge` carries the engine's session-scoped `stable-prefix` boundary into Pi's final OpenRouter payload as an explicit `cache_control` breakpoint. Turn-scoped augmentation and ephemeral virtual tails stay outside the cached prefix instead of moving the automatic breakpoint.
+
+```ts
+import { createPiOpenRouterPromptCacheBridge } from '@innei/message-engine/adapters/pi';
+
+const promptCacheBridge = createPiOpenRouterPromptCacheBridge();
+
+const agent = new Agent({
+  initialState: { model, systemPrompt },
+  onPayload: promptCacheBridge.apply,
+  streamFn: models.streamSimple.bind(models),
+  transformContext: engine.createTransformContext({
+    onCompiled: (result) => promptCacheBridge.capture(result),
+    step: { iteration: 1 },
+  }),
+});
+```
 
 ## Real-agent validation lab
 
