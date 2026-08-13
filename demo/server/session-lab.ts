@@ -26,7 +26,6 @@ import {
   createPiMessageEngine,
   createPiOpenRouterPromptCacheBridge,
   createPiSystemPromptBridge,
-  withPiOpenRouterSessionAffinity,
 } from '../../src/adapters/pi.js';
 import type {
   DemoContextStageState,
@@ -68,10 +67,10 @@ type Publish = (event: DemoStreamEvent) => void;
 const models = createModels();
 models.setProvider(openrouterProvider());
 
-export const getOpenRouterSessionModel = (modelId: string): Model<Api> => {
+const getOpenRouterModel = (modelId: string): Model<Api> => {
   const model = models.getModel('openrouter', modelId);
   if (!model) throw new RangeError(`Unknown OpenRouter model: ${modelId}`);
-  return withPiOpenRouterSessionAffinity(model);
+  return model;
 };
 
 const contentText = (message: AgentMessage): string => {
@@ -381,7 +380,7 @@ export class DemoAgentSession {
     sessionId: string;
     strict: boolean;
   }) {
-    const model = getOpenRouterSessionModel(input.modelId);
+    const model = getOpenRouterModel(input.modelId);
     this.modelId = input.modelId;
     this.sessionId = input.sessionId;
     this.strict = input.strict;

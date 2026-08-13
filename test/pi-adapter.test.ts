@@ -6,7 +6,6 @@ import {
   createPiOpenRouterPromptCacheBridge,
   createPiSystemPromptBridge,
   piMessageAdapter,
-  withPiOpenRouterSessionAffinity,
 } from '../src/adapters/pi.js';
 import { BaseFirstUserContentProvider } from '../src/providers.js';
 
@@ -20,19 +19,6 @@ describe('Pi adapter', () => {
     expect(bridge.apply({ messages: [], systemPrompt: 'stale Pi snapshot' })).toEqual({
       messages: [],
       systemPrompt: 'base prompt\n\ntenant policy',
-    });
-  });
-
-  it('preserves model compatibility settings while enabling OpenRouter affinity', () => {
-    const model = withPiOpenRouterSessionAffinity({
-      compat: { supportsStore: false },
-      id: 'openrouter/model',
-    });
-
-    expect(model.compat).toEqual({
-      sendSessionAffinityHeaders: true,
-      sessionAffinityFormat: 'openrouter',
-      supportsStore: false,
     });
   });
 

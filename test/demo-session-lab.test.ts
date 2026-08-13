@@ -1,5 +1,4 @@
-import { createModels, type Usage } from '@earendil-works/pi-ai';
-import { openrouterProvider } from '@earendil-works/pi-ai/providers/openrouter';
+import type { Usage } from '@earendil-works/pi-ai';
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import { describe, expect, it } from 'vitest';
 
@@ -10,7 +9,6 @@ import {
   type DemoServices,
   type DemoStepContext,
   DemoAgentSession,
-  getOpenRouterSessionModel,
   listDemoModels,
   normalizePiUsage,
   toDemoMessageView,
@@ -105,38 +103,6 @@ describe('real-agent demo integration', () => {
     expect(buildCounts.get('demo.workspace-context')).toBe(1);
     expect(buildCounts.get('demo.request-context')).toBe(2);
     expect(buildCounts.get('demo.runtime-tail')).toBe(2);
-  });
-
-  it('sends OpenRouter session affinity from the Pi transport', async () => {
-    const model = getOpenRouterSessionModel('openai/gpt-4o-mini');
-    const requestHeaders: Headers[] = [];
-    const providerModels = createModels();
-    providerModels.setProvider(openrouterProvider());
-
-    const stream = providerModels.streamSimple(
-      model,
-      {
-        messages: [{ content: [{ text: 'probe', type: 'text' }], role: 'user', timestamp: 1 }],
-        systemPrompt: 'test',
-        tools: [],
-      },
-      {
-        apiKey: 'test-key',
-        fetch: async (_input, init) => {
-          requestHeaders.push(new Headers(init?.headers));
-          return new Response(JSON.stringify({ error: { message: 'expected test stop' } }), {
-            headers: { 'Content-Type': 'application/json' },
-            status: 400,
-          });
-        },
-        sessionId: 'session-affinity-test',
-      },
-    );
-
-    await stream.result();
-
-    expect(requestHeaders).toHaveLength(1);
-    expect(requestHeaders[0]?.get('x-session-id')).toBe('session-affinity-test');
   });
 
   it('exposes the OpenRouter catalog with pricing and cache information', () => {

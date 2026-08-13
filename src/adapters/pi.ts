@@ -19,25 +19,6 @@ type ContextTaggedAgentMessage = AgentMessage & {
   [piMessageEngineContext]?: InjectedUserMessageContext;
 };
 
-/**
- * Enable Pi's explicit OpenRouter session-affinity header support without
- * coupling the message engine package to pi-ai at runtime.
- *
- * Pass the same stable session ID to Pi's stream options for every request in
- * the conversation. Pi will then send it as `x-session-id`.
- */
-export const withPiOpenRouterSessionAffinity = <Model extends { compat?: object }>(
-  model: Model,
-): Model =>
-  ({
-    ...model,
-    compat: {
-      ...model.compat,
-      sendSessionAffinityHeaders: true,
-      sessionAffinityFormat: 'openrouter',
-    },
-  }) as Model;
-
 export interface PiSystemPromptBridge {
   apply<Context extends object>(context: Context): Context & { systemPrompt: string };
   capture(result: { systemPrompt: string }): void;

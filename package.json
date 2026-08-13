@@ -1,6 +1,6 @@
 {
   "name": "@innei/message-engine",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Adapter-driven message pipeline, prefix cache guard, and token telemetry for AI agents",
   "keywords": [
     "agent",

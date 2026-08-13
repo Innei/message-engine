@@ -16,7 +16,7 @@ The core package does not depend on a particular agent runtime. Pi Agent Core is
 - Phased processor pipeline with session-cached contributions
 - Opt-in token, cache, and cost attribution per source / module / processor
 - Standalone HTML telemetry reports and a live sunburst inspector
-- Optional Pi Agent Core adapter with OpenRouter session affinity and prompt-cache breakpoints
+- Optional Pi Agent Core adapter with system-prompt and OpenRouter prompt-cache bridges
 
 ## Installation
 
@@ -277,22 +277,7 @@ await agent.prompt('Analyze this market.');
 
 The returned transform follows Pi's non-throwing `transformContext` contract: failures are reported and the original message array is returned. Use `append`, `syncTranscript`, and `compileTurn` directly when strict errors must propagate to application control flow. Set `trustMessageIdentity: true` only if the Pi integration preserves immutable prefix object identities.
 
-The OpenRouter helpers below are optional. Use them only when that provider needs session stickiness, a compiled system prompt, or an explicit cache breakpoint.
-
-When using OpenRouter, pass the same stable `sessionId` to Pi on every turn. `withPiOpenRouterSessionAffinity` tells Pi to emit that value as `x-session-id`, which activates provider stickiness from the first successful request. OpenRouter limits the value to 256 characters.
-
-```ts
-import { withPiOpenRouterSessionAffinity } from '@innei/message-engine/adapters/pi';
-
-const model = withPiOpenRouterSessionAffinity(openRouterModel);
-
-const agent = new Agent({
-  initialState: { model, systemPrompt },
-  sessionId,
-  streamFn: models.streamSimple.bind(models),
-  transformContext,
-});
-```
+The Pi bridges below are optional. Use them when the runtime needs a compiled system prompt or an explicit OpenRouter cache breakpoint.
 
 Pi snapshots its system prompt before invoking `transformContext`. When the pipeline has `system`-phase providers, capture the compiled prompt and apply it in `streamFn`:
 
@@ -356,7 +341,7 @@ The lab verifies:
 - strict rejection or relaxed generation invalidation after deliberate prefix mutation;
 - export of the standalone devtools HTML report.
 
-The default `openai/gpt-5.6-luna` route uses the `o200k_base` tokenizer. Other OpenRouter families are marked as estimated because their provider tokenizer and framing can differ. Batch routes are omitted because the lab validates interactive, multi-turn session affinity.
+The default `openai/gpt-5.6-luna` route uses the `o200k_base` tokenizer. Other OpenRouter families are marked as estimated because their provider tokenizer and framing can differ. Batch routes are omitted because the lab validates an interactive, multi-turn agent lifecycle.
 
 ## Lifecycle and uniqueness
 
