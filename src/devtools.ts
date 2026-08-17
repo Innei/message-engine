@@ -115,18 +115,16 @@ export const renderSessionTelemetryHtml = (summary: SessionTokenSummary): string
     }
     .shell { max-width: 1240px; margin: 0 auto; border: 1px solid var(--line-strong); background: var(--bg); }
     .command { display: flex; align-items: center; min-height: 40px; border-bottom: 1px solid var(--line-strong); background: var(--surface); }
-    .mark { position: relative; width: 11px; height: 11px; margin: 0 10px 0 12px; border: 1px solid var(--secondary); }
-    .mark::before,.mark::after { position:absolute; background:var(--accent); content:""; }
-    .mark::before { inset:4px -3px auto; height:1px; }
-    .mark::after { inset:-3px auto -3px 4px; width:1px; }
+    .mark { display:block; width:13px; height:13px; margin:0 10px 0 12px; color:var(--accent); }
+    .crumb { display:block; width:11px; height:11px; margin:0 6px; color:var(--tertiary); }
     .command strong { font-size:12px; font-weight:600; letter-spacing:-.01em; }
-    .command span:last-child { margin-left:8px; color:var(--tertiary); font:10px ui-monospace,monospace; letter-spacing:.08em; text-transform:uppercase; }
+    .command span:last-child { color:var(--tertiary); font:10px ui-monospace,monospace; letter-spacing:.08em; text-transform:uppercase; }
     header { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:64px; padding:12px 14px; border-bottom:1px solid var(--line-strong); background:var(--surface); }
     header small { color:var(--tertiary); font:9px ui-monospace,monospace; letter-spacing:.1em; }
     h1 { margin:5px 0 0; font-size:16px; font-weight:580; letter-spacing:-.022em; text-wrap:balance; }
     .identity { margin-top:4px; color:var(--tertiary); font:10px ui-monospace,monospace; overflow-wrap:anywhere; }
-    .ready { color:var(--green); font:9px ui-monospace,monospace; letter-spacing:.07em; text-transform:uppercase; }
-    .ready::before { display:inline-block; width:6px; height:6px; margin-right:6px; border-radius:50%; background:currentColor; content:""; }
+    .ready { display:inline-flex; align-items:center; gap:6px; color:var(--green); font:9px ui-monospace,monospace; letter-spacing:.07em; text-transform:uppercase; }
+    .ready svg { display:block; width:11px; height:11px; }
     .metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); border-bottom:1px solid var(--line-strong); background:var(--surface); }
     .metric { display:flex; align-items:baseline; justify-content:space-between; gap:8px; min-height:40px; padding:10px 12px; border-right:1px solid var(--line); }
     .metric:last-child { border-right:0; }
@@ -165,8 +163,8 @@ export const renderSessionTelemetryHtml = (summary: SessionTokenSummary): string
   </style>
 </head>
 <body><main class="shell">
-  <div class="command"><i class="mark"></i><strong>Message Engine</strong><span>/ telemetry report</span></div>
-  <header><div><small>REPORT / SESSION TELEMETRY</small><h1>${escapeHtml(summary.sessionId)}</h1><div class="identity">${escapeHtml(summary.instanceId)}</div></div><span class="ready">complete</span></header>
+  <div class="command"><svg class="mark" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg><strong>Message Engine</strong><svg class="crumb" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg><span>telemetry report</span></div>
+  <header><div><small>REPORT / SESSION TELEMETRY</small><h1>${escapeHtml(summary.sessionId)}</h1><div class="identity">${escapeHtml(summary.instanceId)}</div></div><span class="ready"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>complete</span></header>
   <div class="metrics">
     <div class="metric"><span>Processed tokens</span><strong>${formatNumber(summary.totalTokens)}</strong></div>
     <div class="metric"><span>Estimated cost</span><strong>$${summary.totalCost.toFixed(6)}</strong></div>

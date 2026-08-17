@@ -83,6 +83,7 @@
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.5",
     "gpt-tokenizer": "3.4.0",
+    "lucide-react": "1.31.0",
     "prettier": "3.9.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",

@@ -47,6 +47,13 @@ describe('message engine React devtools', () => {
     expect(html).toContain('Context scale up to 1,300 tokens');
     expect(html).toContain('Overview');
     expect(html).toContain('data-theme="dark"');
+    expect(html).toContain('lucide-layers');
+    expect(html).toContain('lucide-search');
+    expect(html).toContain('lucide-command');
+    expect(html).toContain('lucide-chevron-right');
+    expect(html).toContain('lucide-download');
+    expect(html).toContain('lucide-loader-circle');
+    expect(html).toContain('lucide-wrench');
   });
 
   it('renders prompt anatomy without a downstream chart implementation', () => {

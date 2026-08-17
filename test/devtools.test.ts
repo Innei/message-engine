@@ -37,5 +37,7 @@ describe('telemetry visualization', () => {
     expect(html).toContain('Token sources');
     expect(html).toContain('REPORT / SESSION TELEMETRY');
     expect(html).toContain('Composition');
+    expect(html).toContain('viewBox="0 0 24 24"');
+    expect(html).toContain('M12.83 2.18');
   });
 });

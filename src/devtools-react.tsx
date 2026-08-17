@@ -13,6 +13,22 @@ import type {
   MessageEngineTraceActivity,
   MessageEngineTraceRun,
 } from './devtools-recorder.js';
+import {
+  ActivityKindIcon,
+  ArrowIcon,
+  BreadcrumbIcon,
+  ConnectionIcon,
+  EmptyIcon,
+  ExportIcon,
+  InjectedIcon,
+  InspectIcon,
+  InspectorViewIcon,
+  PrefixAlertIcon,
+  ProductIcon,
+  SearchIcon,
+  ShortcutIcon,
+  StatusIcon,
+} from './devtools-icons.js';
 import { MESSAGE_ENGINE_DEVTOOLS_CSS } from './devtools-react-styles.js';
 import { TELEMETRY_SOURCE_COLORS } from './devtools-sunburst.js';
 import {
@@ -162,7 +178,7 @@ const MessageEngineDevtoolsStyles = ({ nonce }: { nonce?: string | undefined }) 
 
 const StatusMark = ({ status }: { status: MessageEngineTraceRun['status'] }) => (
   <span aria-label={status} className="me-status-mark" data-status={status}>
-    <i />
+    <StatusIcon status={status} />
     {status}
   </span>
 );
@@ -176,7 +192,7 @@ const PropertyRow = ({ label, value }: { label: string; value: ReactNode }) => (
 
 const EmptyPane = ({ children }: { children: ReactNode }) => (
   <div className="me-empty-pane">
-    <span className="me-empty-cross" />
+    <EmptyIcon />
     <p>{children}</p>
   </div>
 );
@@ -194,7 +210,7 @@ const ActivityList = ({ activities }: { activities: readonly MessageEngineTraceA
           title={activity.detail}
         >
           <span className="me-tree-joint" />
-          <i className="me-event-mark" />
+          <ActivityKindIcon kind={activity.kind} />
           <strong>{activity.label}</strong>
           <span>{activity.detail ?? '—'}</span>
           <time>
@@ -379,7 +395,11 @@ const TraceSegment = ({
       type="button"
     >
       {cacheWidth > 0 ? <span className="me-segment-cache" /> : null}
-      {segment.injected ? <span className="me-injected-mark">i</span> : null}
+      {segment.injected ? (
+        <span className="me-injected-mark">
+          <InjectedIcon />
+        </span>
+      ) : null}
     </button>
   );
 };
@@ -535,6 +555,7 @@ const InspectorTabs = ({
         role="tab"
         type="button"
       >
+        <InspectorViewIcon view={view} />
         {labels[view]}
       </button>
     ))}
@@ -678,7 +699,11 @@ const ActivitiesInspector = ({
             <div key={`${event.nextGeneration}:${index}`}>
               <span>{event.action}</span>
               <strong>{event.reason}</strong>
-              <small>{`message ${event.firstChangedIndex} · generation ${event.previousGeneration} → ${event.nextGeneration}`}</small>
+              <small>
+                {`message ${event.firstChangedIndex} · generation ${event.previousGeneration}`}
+                <ArrowIcon />
+                {event.nextGeneration}
+              </small>
             </div>
           ))}
         </div>
@@ -865,9 +890,15 @@ const TraceWorkbench = ({
         <RunMetrics labels={labels} run={run} />
         {run.prefixMutations.length > 0 ? (
           <button className="me-prefix-alert" onClick={() => setView('activities')} type="button">
-            <span>PREFIX VIOLATION</span>
+            <span>
+              <PrefixAlertIcon />
+              PREFIX VIOLATION
+            </span>
             <strong>{mutationLabel}</strong>
-            <i>Inspect →</i>
+            <i>
+              Inspect
+              <InspectIcon />
+            </i>
           </button>
         ) : null}
         <TraceWorkspace
@@ -937,7 +968,9 @@ const RunRail = ({
             type="button"
           >
             <span className="me-run-time">{formatTime(run.startedAt)}</span>
-            <span className="me-run-state" data-status={run.status} />
+            <span className="me-run-state" data-status={run.status}>
+              <StatusIcon status={run.status} />
+            </span>
             <span className="me-run-copy">
               <strong>{run.title ?? run.sessionId}</strong>
               <small>{[run.provider, run.model].filter(Boolean).join('/') || run.sessionId}</small>
@@ -1050,13 +1083,15 @@ export const MessageEngineDevtools = ({
       <MessageEngineDevtoolsStyles nonce={styleNonce} />
       <header className="me-command-bar">
         <div className="me-product-mark" aria-label={labels.title}>
-          <i />
+          <ProductIcon />
           <strong>{labels.title}</strong>
-          <span>/</span>
+          <BreadcrumbIcon />
           <small>{labels.timeline}</small>
         </div>
         <label className="me-run-search">
-          <span>⌕</span>
+          <span>
+            <SearchIcon />
+          </span>
           <input
             aria-label={labels.searchRuns}
             onChange={(event) => setQuery(event.currentTarget.value)}
@@ -1065,11 +1100,14 @@ export const MessageEngineDevtools = ({
             type="search"
             value={query}
           />
-          <kbd>⌘K</kbd>
+          <kbd>
+            <ShortcutIcon />K
+          </kbd>
         </label>
         <div className="me-command-actions">
           {selectedRun ? <StatusMark status={selectedRun.status} /> : null}
           <button disabled={!selectedRun} onClick={exportRun} type="button">
+            <ExportIcon />
             {labels.export}
           </button>
         </div>
@@ -1122,7 +1160,10 @@ export const MessageEngineDevtools = ({
         <span>
           {selectedRun ? `${selectedRun.summary.prefixViolations} violations` : '0 violations'}
         </span>
-        <span className="me-connection-state">source ready</span>
+        <span className="me-connection-state">
+          <ConnectionIcon />
+          source ready
+        </span>
       </footer>
     </div>
   );
