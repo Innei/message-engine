@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "pnpm demo:build",
+  "framework": "vite",
+  "functions": {
+    "api/**/*.ts": {
+      "includeFiles": "{demo,src}/**",
+      "maxDuration": 60
+    }
+  },
+  "installCommand": "pnpm install",
+  "outputDirectory": "demo-dist"
+}

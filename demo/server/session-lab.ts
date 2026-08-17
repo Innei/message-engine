@@ -349,10 +349,24 @@ export const listDemoModels = (): DemoModelOption[] =>
     }))
     .sort((left, right) => left.name.localeCompare(right.name));
 
+export interface DemoSessionSnapshot {
+  context: DemoSessionContextInput;
+  contextBuildCounts: Record<string, number>;
+  contextBuildValues: Record<string, string>;
+  lastPrefixEvent?: PrefixMutationEvent;
+  messages: AgentMessage[];
+  modelId: string;
+  providerTurn: number;
+  sessionId: string;
+  startedAt: string;
+  strict: boolean;
+}
+
 export class DemoAgentSession {
   readonly instanceId: string;
   readonly modelId: string;
   readonly sessionId: string;
+  readonly startedAt: string;
   readonly strict: boolean;
 
   private active = false;
@@ -373,16 +387,23 @@ export class DemoAgentSession {
   private lastPrefixEvent: PrefixMutationEvent | undefined;
   private latestSnapshot: TurnTokenSnapshot | undefined;
   private providerTurn = 0;
+  private readonly sessionContext: DemoSessionContextInput;
 
   constructor(input: {
     context?: DemoSessionContextInput;
     modelId: string;
     sessionId: string;
+    startedAt?: string;
     strict: boolean;
   }) {
     const model = getOpenRouterModel(input.modelId);
     this.modelId = input.modelId;
     this.sessionId = input.sessionId;
+    this.sessionContext = {
+      policy: input.context?.policy ?? 'research-only',
+      workspace: input.context?.workspace ?? 'Kansoku Trading Desk',
+    };
+    this.startedAt = input.startedAt ?? new Date().toISOString();
     this.strict = input.strict;
 
     this.engine = createPiMessageEngine<
@@ -411,9 +432,9 @@ export class DemoAgentSession {
       },
       initial: {
         experiment: 'Pi adapter / OpenRouter telemetry validation',
-        policy: input.context?.policy ?? 'research-only',
-        startedAt: new Date().toISOString(),
-        workspace: input.context?.workspace ?? 'Kansoku Trading Desk',
+        policy: this.sessionContext.policy,
+        startedAt: this.startedAt,
+        workspace: this.sessionContext.workspace,
       },
       logger: {
         error: (message) => this.activePublisher?.({ message, type: 'trace' }),
@@ -494,6 +515,18 @@ export class DemoAgentSession {
     this.agent.subscribe((event) => this.handleAgentEvent(event));
   }
 
+  static async fromSnapshot(snapshot: DemoSessionSnapshot): Promise<DemoAgentSession> {
+    const session = new DemoAgentSession({
+      context: snapshot.context,
+      modelId: snapshot.modelId,
+      sessionId: snapshot.sessionId,
+      startedAt: snapshot.startedAt,
+      strict: snapshot.strict,
+    });
+    await session.restore(snapshot);
+    return session;
+  }
+
   abort(): void {
     this.agent.abort();
   }
@@ -515,6 +548,37 @@ export class DemoAgentSession {
       sessionId: this.sessionId,
       strict: this.strict,
       ...(summary ? { summary } : {}),
+    };
+  }
+
+  async restore(snapshot: DemoSessionSnapshot): Promise<void> {
+    this.providerTurn = snapshot.providerTurn;
+    this.lastPrefixEvent = snapshot.lastPrefixEvent;
+    this.contextBuildCounts.clear();
+    this.contextBuildValues.clear();
+    for (const [processorId, count] of Object.entries(snapshot.contextBuildCounts)) {
+      this.contextBuildCounts.set(processorId, count);
+    }
+    for (const [processorId, value] of Object.entries(snapshot.contextBuildValues)) {
+      this.contextBuildValues.set(processorId, value);
+    }
+    const messages = structuredClone(snapshot.messages);
+    this.agent.state.messages = messages;
+    if (messages.length > 0) await this.engine.syncTranscript(messages);
+  }
+
+  toSnapshot(): DemoSessionSnapshot {
+    return {
+      context: this.sessionContext,
+      contextBuildCounts: Object.fromEntries(this.contextBuildCounts),
+      contextBuildValues: Object.fromEntries(this.contextBuildValues),
+      ...(this.lastPrefixEvent ? { lastPrefixEvent: this.lastPrefixEvent } : {}),
+      messages: structuredClone(this.agent.state.messages),
+      modelId: this.modelId,
+      providerTurn: this.providerTurn,
+      sessionId: this.sessionId,
+      startedAt: this.startedAt,
+      strict: this.strict,
     };
   }
 

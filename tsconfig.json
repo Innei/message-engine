@@ -19,6 +19,7 @@
     "rootDir": "."
   },
   "include": [
+    "api/**/*.ts",
     "demo/**/*.ts",
     "demo/**/*.tsx",
     "src/**/*.ts",
