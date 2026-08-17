@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0b0c0e" />
+    <title>Message Engine Devtools</title>
+    <style>
+      html,
+      body,
+      #root {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        padding: 16px;
+        background-color: #08090b;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+        background-size: 24px 24px;
+      }
+      #root {
+        max-width: 1440px;
+        min-height: calc(100vh - 32px);
+        margin: 0 auto;
+      }
+      #root > * {
+        min-height: calc(100vh - 32px);
+      }
+
+      @media (max-width: 680px) {
+        body {
+          padding: 0;
+        }
+        #root,
+        #root > * {
+          min-height: 100vh;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/client/devtools-main.tsx"></script>
+  </body>
+</html>

@@ -11,6 +11,12 @@ export default defineConfig({
   build: {
     emptyOutDir: true,
     outDir: fileURLToPath(new URL('../demo-dist', import.meta.url)),
+    rollupOptions: {
+      input: {
+        devtools: fileURLToPath(new URL('./devtools.html', import.meta.url)),
+        lab: fileURLToPath(new URL('./index.html', import.meta.url)),
+      },
+    },
   },
   plugins: [react(), messageEngineDemoApi()],
   root,

@@ -15,7 +15,7 @@ The core package does not depend on a particular agent runtime. Pi Agent Core is
 - Incremental message indexes without rescanning the committed prefix
 - Phased processor pipeline with session-cached contributions
 - Opt-in token, cache, and cost attribution per source / module / processor
-- Standalone HTML telemetry reports and a live sunburst inspector
+- Standalone HTML telemetry reports and a complete React trace inspector
 - Optional Pi Agent Core adapter with system-prompt and OpenRouter prompt-cache bridges
 
 ## Installation
@@ -229,7 +229,7 @@ Telemetry sinks receive `turn-compiled`, `usage-recorded`, and `session-summary`
 
 ## Visualization
 
-The devtools entry point converts a session summary into standalone HTML with source distribution, per-turn reuse, cache-hit rate, and cost tables. `toTelemetrySunburst(snapshot)` builds the source → module → segment hierarchy used by the live radial inspector.
+The devtools entry point converts a session summary into a standalone linear-grid report with source composition, per-turn reuse, cache-hit rate, and cost tables. `toTelemetrySunburst(snapshot)` remains available for custom visualizations, while the packaged React inspector uses a denser source → module → segment prompt blueprint.
 
 ```ts
 import { writeFile } from 'node:fs/promises';
@@ -242,6 +242,61 @@ if (summary) {
 ```
 
 `toTelemetryChartData(summary)` is also exported for product-native dashboards.
+
+### React trace inspector
+
+`@innei/message-engine/devtools/react` provides a styled, dependency-light trace workspace for downstream applications that do not want to implement their own DevTool shell or charts. It includes:
+
+- a searchable run rail, status bar, responsive workspace, and safe JSON export;
+- a compact token-scale trace grid with one context-composition row per provider call;
+- provider prefix-cache coverage, cache diagnostics, and message boundaries;
+- a source → module → segment prompt blueprint and selected-segment metadata;
+- a persistent inspector for overview, prompt, cache, activities, and raw telemetry;
+- generic tree rows for tools, retries, rate limits, and application events;
+- built-in light, dark, and system themes with optional label and color overrides.
+
+Create one recorder for the application and one binding for each engine session. The binding exposes the telemetry sink and prefix-mutation hook expected by the engine:
+
+```tsx
+import { createMessageEngineDevtoolsRecorder } from '@innei/message-engine/devtools';
+import { MessageEngineDevtools } from '@innei/message-engine/devtools/react';
+
+const devtools = createMessageEngineDevtoolsRecorder({ maxRuns: 20 });
+const trace = devtools.startRun({
+  sessionId,
+  title: 'Research agent',
+  provider: runtime.provider,
+  model: runtime.model,
+});
+
+const engine = new SessionMessagesEngine({
+  // adapter, modules, and other session options...
+  hooks: {
+    onPrefixMutation: trace.recordPrefixMutation,
+  },
+  tokenAccounting: {
+    tokenizer,
+    sinks: [trace.telemetrySink],
+  },
+});
+
+trace.recordActivity({
+  kind: 'tool',
+  label: 'webSearch',
+  status: 'success',
+  turnId,
+});
+
+export const AgentTrace = () => (
+  <MessageEngineDevtools
+    cachePolicy={{ minimumCacheTokens: 1024 }}
+    source={devtools}
+    theme="system"
+  />
+);
+```
+
+The component injects scoped styles and adapts through container queries, so consumers do not need Tailwind, a charting library, breakpoint props, or a separate CSS import. React remains an optional peer dependency and is only required when importing the React entry point.
 
 ## Pi Agent Core adapter
 
@@ -356,11 +411,12 @@ await registry.destroy(sessionId);
 
 ## Package exports
 
-| Import                              | Contents                                           |
-| ----------------------------------- | -------------------------------------------------- |
-| `@innei/message-engine`             | Engine, adapters, pipeline types, token accounting |
-| `@innei/message-engine/devtools`    | HTML report, chart data, sunburst model            |
-| `@innei/message-engine/adapters/pi` | `createPiMessageEngine` and OpenRouter/Pi bridges  |
+| Import                                 | Contents                                           |
+| -------------------------------------- | -------------------------------------------------- |
+| `@innei/message-engine`                | Engine, adapters, pipeline types, token accounting |
+| `@innei/message-engine/devtools`       | HTML report, chart data, sunburst model            |
+| `@innei/message-engine/devtools/react` | Recorder-driven React trace inspector              |
+| `@innei/message-engine/adapters/pi`    | `createPiMessageEngine` and OpenRouter/Pi bridges  |
 
 ## Development
 

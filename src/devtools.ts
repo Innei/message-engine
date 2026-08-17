@@ -1,5 +1,6 @@
 import type { SessionTokenSummary, TokenSourceSummary } from './token-types.js';
 
+export * from './devtools-recorder.js';
 export {
   TELEMETRY_SOURCE_COLORS,
   telemetryArcPath,
@@ -8,6 +9,7 @@ export {
   type TelemetrySunburstModel,
   type TelemetrySunburstSource,
 } from './devtools-sunburst.js';
+export * from './devtools-timeline.js';
 
 export interface TelemetryChartDatum extends TokenSourceSummary {
   color: string;
@@ -54,11 +56,12 @@ export const renderSessionTelemetryHtml = (summary: SessionTokenSummary): string
   const sourceRows = chartData
     .map(
       (source) => `<tr>
-        <td><span class="swatch" style="background:${source.color}"></span>${escapeHtml(source.sourceType)}</td>
+        <td class="source"><span class="swatch" style="--source:${source.color}"></span>${escapeHtml(source.sourceType)}</td>
         <td>${formatNumber(source.tokens)}</td>
         <td>${formatPercent(source.percentage)}</td>
         <td>${formatNumber(source.characters)}</td>
         <td>$${source.cost.toFixed(6)}</td>
+        <td class="composition"><span style="--source:${source.color};--share:${source.percentage * 100}%"></span></td>
       </tr>`,
     )
     .join('');
@@ -74,17 +77,6 @@ export const renderSessionTelemetryHtml = (summary: SessionTokenSummary): string
       </tr>`,
     )
     .join('');
-  const gradient =
-    chartData.length === 0
-      ? '#e8e8e8'
-      : `conic-gradient(${chartData
-          .reduce<Array<{ color: string; end: number; start: number }>>((items, datum) => {
-            const start = items.at(-1)?.end ?? 0;
-            items.push({ color: datum.color, end: start + datum.percentage * 100, start });
-            return items;
-          }, [])
-          .map(({ color, end, start }) => `${color} ${start}% ${end}%`)
-          .join(',')})`;
 
   return `<!doctype html>
 <html lang="en">
@@ -93,36 +85,96 @@ export const renderSessionTelemetryHtml = (summary: SessionTokenSummary): string
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Message engine telemetry · ${escapeHtml(summary.sessionId)}</title>
   <style>
-    :root { color-scheme: light dark; font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; }
-    body { margin: 0; background: #f7f7f8; color: #202124; }
-    main { max-width: 1120px; margin: 0 auto; padding: 40px 24px; }
-    h1 { margin: 0 0 4px; font-size: 24px; } .muted { color: #687076; }
-    .metrics { display: grid; grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap: 12px; margin: 24px 0; }
-    .card, section { background: white; border: 1px solid #e4e4e7; border-radius: 12px; box-shadow: 0 1px 2px #0000000a; }
-    .card { padding: 16px; } .card strong { display: block; margin-top: 6px; font-size: 22px; }
-    section { margin: 16px 0; padding: 20px; overflow: auto; }
-    .distribution { display: grid; grid-template-columns: 180px 1fr; gap: 28px; align-items: center; }
-    .donut { width: 160px; aspect-ratio: 1; border-radius: 50%; background: ${gradient}; position: relative; }
-    .donut::after { content: ''; position: absolute; inset: 30%; border-radius: 50%; background: white; }
-    table { width: 100%; border-collapse: collapse; white-space: nowrap; }
-    th, td { padding: 9px 12px; border-bottom: 1px solid #ececef; text-align: right; }
-    th:first-child, td:first-child { text-align: left; } th { color: #687076; font-weight: 600; }
-    .swatch { display: inline-block; width: 9px; height: 9px; margin-right: 8px; border-radius: 2px; }
-    @media (max-width: 640px) { .distribution { grid-template-columns: 1fr; } .donut { margin: auto; } }
+    :root {
+      color-scheme: dark;
+      --bg: #090a0c;
+      --surface: #0c0d10;
+      --raised: #101116;
+      --line: rgba(255,255,255,.055);
+      --line-strong: rgba(255,255,255,.12);
+      --text: rgba(255,255,255,.92);
+      --secondary: rgba(255,255,255,.64);
+      --tertiary: rgba(255,255,255,.44);
+      --accent: #8b7cf6;
+      --green: #4ed69c;
+      font: 12px/1.4 Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html {
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    body {
+      min-width: 320px;
+      margin: 0;
+      padding: 20px;
+      background: var(--bg);
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      text-rendering: optimizeLegibility;
+    }
+    .shell { max-width: 1240px; margin: 0 auto; border: 1px solid var(--line-strong); background: var(--bg); }
+    .command { display: flex; align-items: center; min-height: 40px; border-bottom: 1px solid var(--line-strong); background: var(--surface); }
+    .mark { position: relative; width: 11px; height: 11px; margin: 0 10px 0 12px; border: 1px solid var(--secondary); }
+    .mark::before,.mark::after { position:absolute; background:var(--accent); content:""; }
+    .mark::before { inset:4px -3px auto; height:1px; }
+    .mark::after { inset:-3px auto -3px 4px; width:1px; }
+    .command strong { font-size:12px; font-weight:600; letter-spacing:-.01em; }
+    .command span:last-child { margin-left:8px; color:var(--tertiary); font:10px ui-monospace,monospace; letter-spacing:.08em; text-transform:uppercase; }
+    header { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:64px; padding:12px 14px; border-bottom:1px solid var(--line-strong); background:var(--surface); }
+    header small { color:var(--tertiary); font:9px ui-monospace,monospace; letter-spacing:.1em; }
+    h1 { margin:5px 0 0; font-size:16px; font-weight:580; letter-spacing:-.022em; text-wrap:balance; }
+    .identity { margin-top:4px; color:var(--tertiary); font:10px ui-monospace,monospace; overflow-wrap:anywhere; }
+    .ready { color:var(--green); font:9px ui-monospace,monospace; letter-spacing:.07em; text-transform:uppercase; }
+    .ready::before { display:inline-block; width:6px; height:6px; margin-right:6px; border-radius:50%; background:currentColor; content:""; }
+    .metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); border-bottom:1px solid var(--line-strong); background:var(--surface); }
+    .metric { display:flex; align-items:baseline; justify-content:space-between; gap:8px; min-height:40px; padding:10px 12px; border-right:1px solid var(--line); }
+    .metric:last-child { border-right:0; }
+    .metric span,.section-title { color:var(--tertiary); font:9px ui-monospace,monospace; letter-spacing:.08em; text-transform:uppercase; }
+    .metric strong { font:13px ui-monospace,monospace; font-variant-numeric:tabular-nums; font-weight:520; letter-spacing:-.02em; }
+    section { overflow:auto; border-bottom:1px solid var(--line-strong); }
+    .section-title { height:32px; margin:0; padding:10px 12px; background:var(--surface); }
+    table { width:100%; min-width:720px; border-collapse:collapse; white-space:nowrap; font:11px ui-monospace,monospace; font-variant-numeric:tabular-nums; }
+    th,td { height:32px; padding:0 12px; border-right:1px solid var(--line); border-bottom:1px solid var(--line); text-align:right; font-weight:400; }
+    th:last-child,td:last-child { border-right:0; }
+    tr:last-child td { border-bottom:0; }
+    th { background:var(--raised); color:var(--tertiary); font-size:9px; letter-spacing:.06em; text-transform:uppercase; }
+    th:first-child,td:first-child { text-align:left; }
+    tbody tr { transition-property:background-color; transition-duration:140ms; transition-timing-function:cubic-bezier(.2,0,0,1); }
+    tbody tr:hover { background:rgba(139,124,246,.1); }
+    .source { color:var(--secondary); }
+    .swatch { display:inline-block; width:14px; height:1px; margin:0 8px 3px 0; background:var(--source); box-shadow:0 -2px var(--source); }
+    .composition { width:24%; }
+    .composition > span { position:relative; display:block; width:100%; height:10px; border-top:1px solid var(--line-strong); }
+    .composition > span::after { position:absolute; top:-2px; left:0; width:var(--share); height:2px; background:var(--source); content:""; }
+    footer { display:grid; grid-template-columns:minmax(0,1fr) repeat(2,max-content); min-height:28px; background:var(--surface); color:var(--tertiary); font:9px ui-monospace,monospace; font-variant-numeric:tabular-nums; letter-spacing:.04em; text-transform:uppercase; }
+    footer span { overflow:hidden; padding:8px 10px; border-right:1px solid var(--line); text-overflow:ellipsis; white-space:nowrap; }
+    footer span:last-child { border-right:0; }
+    @media (max-width:640px) {
+      body { padding:0; }
+      .shell { border-width:0; }
+      .metrics { grid-template-columns:repeat(2,1fr); }
+      .metric:nth-child(2) { border-right:0; }
+      .metric:nth-child(-n+2) { border-bottom:1px solid var(--line); }
+      header { align-items:flex-start; gap:12px; }
+    }
+    @media print {
+      body { padding:0; background:#fff; }
+      .shell { max-width:none; }
+    }
   </style>
 </head>
-<body><main>
-  <h1>Session telemetry</h1>
-  <div class="muted">${escapeHtml(summary.sessionId)} · ${escapeHtml(summary.instanceId)}</div>
+<body><main class="shell">
+  <div class="command"><i class="mark"></i><strong>Message Engine</strong><span>/ telemetry report</span></div>
+  <header><div><small>REPORT / SESSION TELEMETRY</small><h1>${escapeHtml(summary.sessionId)}</h1><div class="identity">${escapeHtml(summary.instanceId)}</div></div><span class="ready">complete</span></header>
   <div class="metrics">
-    <div class="card">Processed tokens<strong>${formatNumber(summary.totalTokens)}</strong></div>
-    <div class="card">Estimated cost<strong>$${summary.totalCost.toFixed(6)}</strong></div>
-    <div class="card">Provider cache hit<strong>${formatPercent(summary.averageProviderCacheHitRate)}</strong></div>
-    <div class="card">Prefix violations<strong>${summary.prefixViolations}</strong></div>
+    <div class="metric"><span>Processed tokens</span><strong>${formatNumber(summary.totalTokens)}</strong></div>
+    <div class="metric"><span>Estimated cost</span><strong>$${summary.totalCost.toFixed(6)}</strong></div>
+    <div class="metric"><span>Provider cache hit</span><strong>${formatPercent(summary.averageProviderCacheHitRate)}</strong></div>
+    <div class="metric"><span>Prefix violations</span><strong>${summary.prefixViolations}</strong></div>
   </div>
-  <section><h2>Token sources</h2><div class="distribution"><div class="donut" role="img" aria-label="Token source distribution"></div>
-    <table><thead><tr><th>Source</th><th>Tokens</th><th>Share</th><th>Characters</th><th>Cost</th></tr></thead><tbody>${sourceRows}</tbody></table>
-  </div></section>
-  <section><h2>Turns</h2><table><thead><tr><th>Turn</th><th>Generation</th><th>Tokens</th><th>Internal reuse</th><th>Provider hit</th><th>Cost</th></tr></thead><tbody>${turnRows}</tbody></table></section>
+  <section><h2 class="section-title">Token sources</h2><table><thead><tr><th>Source</th><th>Tokens</th><th>Share</th><th>Characters</th><th>Cost</th><th>Composition</th></tr></thead><tbody>${sourceRows}</tbody></table></section>
+  <section><h2 class="section-title">Turns</h2><table><thead><tr><th>Turn</th><th>Generation</th><th>Tokens</th><th>Internal reuse</th><th>Provider hit</th><th>Cost</th></tr></thead><tbody>${turnRows}</tbody></table></section>
+  <footer><span>${escapeHtml(summary.sessionId)}</span><span>${summary.turns.length} turns</span><span>${summary.prefixViolations} violations</span></footer>
 </main></body></html>`;
 };

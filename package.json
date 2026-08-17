@@ -37,6 +37,10 @@
       "types": "./dist/devtools.d.ts",
       "import": "./dist/devtools.js"
     },
+    "./devtools/react": {
+      "types": "./dist/devtools-react.d.ts",
+      "import": "./dist/devtools-react.js"
+    },
     "./adapters/pi": {
       "types": "./dist/adapters/pi-entry.d.ts",
       "import": "./dist/adapters/pi-entry.js"
@@ -60,10 +64,14 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "peerDependencies": {
-    "@earendil-works/pi-agent-core": "^0.84.1"
+    "@earendil-works/pi-agent-core": "^0.84.1",
+    "react": ">=18.3.0"
   },
   "peerDependenciesMeta": {
     "@earendil-works/pi-agent-core": {
+      "optional": true
+    },
+    "react": {
       "optional": true
     }
   },

@@ -35,5 +35,7 @@ describe('telemetry visualization', () => {
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).toContain('Token sources');
+    expect(html).toContain('REPORT / SESSION TELEMETRY');
+    expect(html).toContain('Composition');
   });
 });
