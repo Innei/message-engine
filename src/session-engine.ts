@@ -1,5 +1,6 @@
 import { ConcurrentCompilationError, EngineDestroyedError, PrefixMutationError } from './errors.js';
 import { fingerprint } from './fingerprint.js';
+import type { LastUserPin } from './last-user-pin.js';
 import type { MessageAdapter } from './message-adapter.js';
 import { messageToTokenSegments } from './message-adapter.js';
 import { MessageIndex } from './message-index.js';
@@ -91,6 +92,7 @@ export class SessionMessagesEngine<
   private readonly inputReferences: Message[] = [];
   private lastCompiledGeneration = -1;
   private lastCompiledMessageCount = 0;
+  private readonly lastUserPins = new Map<string, LastUserPin>();
   private readonly logger: EngineLogger;
   private messageSequence = 0;
   private prefixViolationCount = 0;
@@ -470,6 +472,8 @@ export class SessionMessagesEngine<
       this.baseSystemPrompt,
       signal,
       this.index.snapshot(),
+      this.lastCompiledMessageCount,
+      this.lastUserPins,
     );
     const processorStats = await executePipeline({
       context,

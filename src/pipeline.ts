@@ -1,5 +1,6 @@
 import { PipelineConfigurationError, PipelineProcessorError } from './errors.js';
 import { fingerprint } from './fingerprint.js';
+import { applyLastUserContributions, type LastUserPin } from './last-user-pin.js';
 import type { MessageAdapter } from './message-adapter.js';
 import { MessageIndex } from './message-index.js';
 import type {
@@ -213,6 +214,8 @@ export class PipelineExecutionContext<
     systemPrompt: string,
     readonly signal: AbortSignal | undefined,
     initialIndex?: MessageIndexSnapshot,
+    private readonly committedRawCount = 0,
+    private readonly lastUserPins: Map<string, LastUserPin> = new Map(),
   ) {
     this.messageList = [...rawMessages];
     this.messageIds = [...rawMessageIds];
@@ -389,13 +392,15 @@ export class PipelineExecutionContext<
         this.indexDirty = true;
       }
     } else if (slot === 'last-user') {
-      const lastUser = this.index.lastUser;
-      if (lastUser !== null) {
-        const message = this.messageList[lastUser];
-        if (message !== undefined) {
-          this.messageList[lastUser] = this.adapter.appendTextToUserMessage(message, content);
-        }
-      }
+      const result = applyLastUserContributions({
+        adapter: this.adapter,
+        committedRawCount: this.committedRawCount,
+        contributions: selected,
+        lastUserPins: this.lastUserPins,
+        messageIds: this.messageIds,
+        messageList: this.messageList,
+      });
+      if (result.indexDirty) this.indexDirty = true;
     } else {
       this.messageList.push(
         this.adapter.createUserMessage(content, undefined, { cacheScope, slot: 'virtual-tail' }),
@@ -486,13 +491,18 @@ export const executePipeline = async <
       throw new PipelineProcessorError(processor.id, error);
     }
 
+    const produced = context.contributionsSince(contributionStart);
+    if (processor.cacheScope !== 'session' && produced.some((item) => item.pin === true)) {
+      throw new PipelineConfigurationError('pin: true requires cacheScope "session"');
+    }
+
     if (processor.cacheScope === 'session') {
       if (context.currentMutationRevision() !== mutationStart) {
         throw new PipelineConfigurationError(
           `Session-cached processor ${processor.id} must only emit contributions`,
         );
       }
-      sessionContributionCache.set(processor.id, context.contributionsSince(contributionStart));
+      sessionContributionCache.set(processor.id, produced);
     }
 
     stats.push({

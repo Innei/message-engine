@@ -120,4 +120,100 @@ describe('pinned last-user contributions', () => {
       PipelineConfigurationError,
     );
   });
+
+  it('pins a session last-user section on the first user and does not rebind', async () => {
+    let builds = 0;
+    class PinnedSection extends BaseLastUserContentProvider<
+      TestMessage,
+      { agent: string },
+      { turn: number },
+      Record<string, never>,
+      { visited?: boolean }
+    > {
+      readonly id = 'pinned.section';
+      constructor() {
+        super({ pin: true, sourceType: 'knowledge' });
+      }
+      protected build() {
+        builds += 1;
+        return 'workspace snapshot';
+      }
+    }
+
+    const engine = createEngine({
+      modules: [{ id: 'pinned', processors: [new PinnedSection()] }],
+    });
+    engine.append([message('ask')]);
+    const first = await engine.compileTurn({ step: { turn: 1 } });
+    expect(first.messages.map((item) => item.content)).toEqual(['ask\n\nworkspace snapshot']);
+    expect(engine.getMessages().map((item) => item.content)).toEqual(['ask']);
+
+    engine.append([message('answer', 'assistant'), message('follow up')]);
+    const second = await engine.compileTurn({ step: { turn: 2 } });
+    expect(second.messages.map((item) => item.content)).toEqual([
+      'ask\n\nworkspace snapshot',
+      'answer',
+      'follow up',
+    ]);
+    expect(builds).toBe(1);
+    expect(engine.getMessages().map((item) => item.content)).toEqual([
+      'ask',
+      'answer',
+      'follow up',
+    ]);
+  });
+
+  it('still rebinds unpinned last-user contributions to the current last user', async () => {
+    class MovingSection extends BaseLastUserContentProvider<
+      TestMessage,
+      { agent: string },
+      { turn: number },
+      Record<string, never>,
+      { visited?: boolean }
+    > {
+      readonly id = 'moving.section';
+      constructor() {
+        super({ cacheScope: 'session', sourceType: 'knowledge' });
+      }
+      protected build() {
+        return 'moving';
+      }
+    }
+    const engine = createEngine({
+      modules: [{ id: 'moving', processors: [new MovingSection()] }],
+    });
+    engine.append([message('ask')]);
+    await engine.compileTurn({ step: { turn: 1 } });
+    engine.append([message('answer', 'assistant'), message('follow up')]);
+    const second = await engine.compileTurn({ step: { turn: 2 } });
+    expect(second.messages.map((item) => item.content)).toEqual([
+      'ask',
+      'answer',
+      'follow up\n\nmoving',
+    ]);
+  });
+
+  it('rejects turn last-user writes to a committed user message', async () => {
+    class TurnAugment extends BaseLastUserContentProvider<
+      TestMessage,
+      { agent: string },
+      { turn: number },
+      Record<string, never>,
+      { visited?: boolean }
+    > {
+      readonly id = 'turn.augment';
+      protected build() {
+        return 'now';
+      }
+    }
+    const engine = createEngine({
+      modules: [{ id: 'turn', processors: [new TurnAugment()] }],
+    });
+    engine.append([message('ask')]);
+    await engine.compileTurn({ step: { turn: 1 } });
+    engine.append([message('answer', 'assistant')]);
+    await expect(engine.compileTurn({ step: { turn: 2 } })).rejects.toBeInstanceOf(
+      PipelineConfigurationError,
+    );
+  });
 });
