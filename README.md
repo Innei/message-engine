@@ -124,12 +124,12 @@ const runtimeModule: MessageEngineModule<AppMessage, Initial, Step, Services> = 
   processors: [
     {
       id: 'runtime.market-state',
-      phase: 'user-augmentation',
+      phase: 'virtual-tail',
       cacheScope: 'turn',
       access: { reads: ['content'], writes: 'none' },
       process(context) {
         context.contribute({
-          slot: 'last-user',
+          slot: 'virtual-tail',
           content: {
             cacheScope: 'turn',
             id: 'market-state',
