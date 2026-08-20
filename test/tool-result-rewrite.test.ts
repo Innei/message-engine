@@ -108,6 +108,33 @@ describe('tool result rewrite', () => {
     expect(rewrite).toHaveBeenCalledTimes(1);
   });
 
+  it('pins an undefined rewrite for the generation and reconsults after invalidatePrefix', async () => {
+    const rewrite = vi.fn(() => undefined as string | undefined);
+    const engine = createEngine({
+      modules: [
+        {
+          id: 'history',
+          processors: [createToolResultRewriteProcessor<TestMessage>(rewrite)],
+        },
+      ],
+    });
+    engine.append([message('ask'), toolResult('call-1', 'huge')]);
+    const first = await engine.compileTurn({ step: { turn: 1 } });
+    expect(first.messages[1]?.content).toBe('huge');
+
+    rewrite.mockImplementation(() => 'should-not-apply');
+    engine.append([message('more', 'assistant')]);
+    const second = await engine.compileTurn({ step: { turn: 2 } });
+    expect(second.messages[1]?.content).toBe('huge');
+    expect(rewrite).toHaveBeenCalledTimes(1);
+
+    rewrite.mockImplementation(() => 'v2');
+    await engine.invalidatePrefix({ expected: true, reason: 'pipeline-changed' });
+    const after = await engine.compileTurn({ step: { turn: 3 } });
+    expect(after.messages[1]?.content).toBe('v2');
+    expect(rewrite).toHaveBeenCalledTimes(2);
+  });
+
   it('consults rewrite again after invalidatePrefix', async () => {
     const rewrite = vi.fn(() => 'v1');
     const engine = createEngine({

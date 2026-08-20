@@ -35,16 +35,15 @@ export const createToolResultRewriteProcessor = <
         if (message === undefined) continue;
         const toolCallId = context.getToolResultId(message);
         if (!toolCallId) continue;
-        const existing = pinned.get(toolCallId);
-        if (existing) {
-          context.replaceMessage(index, existing);
+        if (pinned.has(toolCallId)) {
+          const existing = pinned.get(toolCallId);
+          if (existing !== undefined) context.replaceMessage(index, existing);
           continue;
         }
         const result = rewrite({ index, message, toolCallId });
-        if (result === undefined) continue;
         if (typeof result === 'string') {
           context.replaceToolResultText(index, result);
-        } else {
+        } else if (result !== undefined) {
           const nextId = context.getToolResultId(result);
           if (nextId !== toolCallId) {
             throw new Error(`tool result rewrite changed toolCallId ${toolCallId}`);
