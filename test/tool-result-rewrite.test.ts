@@ -80,10 +80,12 @@ const toolResult = (toolCallId: string, content: string): TestMessage => ({
 
 describe('tool result rewrite', () => {
   it('asks the host once per toolCallId per generation and pins the body', async () => {
-    const rewrite = vi.fn((input: { toolCallId: string; message: TestMessage }) => {
-      if (input.toolCallId === 'call-1') return 'truncated';
-      return undefined;
-    });
+    const rewrite = vi.fn(
+      (input: { toolCallId: string; message: TestMessage }): string | undefined => {
+        if (input.toolCallId === 'call-1') return 'truncated';
+        return undefined;
+      },
+    );
     const engine = createEngine({
       modules: [
         {
@@ -187,5 +189,31 @@ describe('tool result rewrite', () => {
     await expect(engine.compileTurn({ step: { turn: 1 } })).rejects.toBeInstanceOf(
       PipelineConfigurationError,
     );
+  });
+
+  it('does not replay rewritten bodies across engines sharing one processor', async () => {
+    const rewrite = vi.fn(
+      (input: { message: TestMessage }) => `rewritten:${input.message.content}`,
+    );
+    const processor = createToolResultRewriteProcessor<TestMessage>(rewrite);
+    const first = createEngine({
+      modules: [{ id: 'history', processors: [processor] }],
+      sessionId: 'session-a',
+    });
+    first.append([message('ask'), toolResult('call-1', 'huge payload')]);
+    const compiledFirst = await first.compileTurn({ step: { turn: 1 } });
+    expect(compiledFirst.messages[1]?.content).toBe('rewritten:huge payload');
+    expect(rewrite).toHaveBeenCalledTimes(1);
+
+    const second = createEngine({
+      modules: [{ id: 'history', processors: [processor] }],
+      sessionId: 'session-b',
+    });
+    second.append([message('ask'), toolResult('call-1', 'other payload')]);
+    const compiledSecond = await second.compileTurn({ step: { turn: 1 } });
+    expect(compiledSecond.messages[1]?.content).toBe('rewritten:other payload');
+    expect(rewrite).toHaveBeenCalledTimes(2);
+    expect(first.getMessages()[1]?.content).toBe('huge payload');
+    expect(second.getMessages()[1]?.content).toBe('other payload');
   });
 });

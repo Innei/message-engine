@@ -104,6 +104,7 @@ export class SessionMessagesEngine<
   private readonly services: Services;
   private readonly strictHooks: boolean;
   private readonly tokenAccounting?: TokenAccountingManager;
+  private readonly toolResultPins = new Map<string, Message>();
   private turnSequence = 0;
   private readonly plan: PipelinePlan<Message, Initial, Step, Services, Metadata>;
 
@@ -299,6 +300,7 @@ export class SessionMessagesEngine<
     this.index.clear();
     this.sessionContributionCache.clear();
     this.lastUserPins.clear();
+    this.toolResultPins.clear();
 
     if (errors.length > 0) throw new AggregateError(errors, 'Message engine teardown failed');
     return summary;
@@ -476,6 +478,7 @@ export class SessionMessagesEngine<
       this.lastCompiledMessageCount,
       this.lastUserPins,
       this.generationValue,
+      this.toolResultPins,
     );
     const processorStats = await executePipeline({
       context,
@@ -569,6 +572,7 @@ export class SessionMessagesEngine<
     this.lastCompiledMessageCount = 0;
     this.sessionContributionCache.clear();
     this.lastUserPins.clear();
+    this.toolResultPins.clear();
   }
 
   private async invokeHook(name: 'onPrefixMutation', value: PrefixMutationEvent): Promise<void>;

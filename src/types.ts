@@ -84,6 +84,7 @@ export interface MessagePipelineContext<
   readonly messages: readonly Message[];
   readonly metadata: Metadata;
   readonly systemPrompt: string;
+  readonly toolResultPins: Map<string, Message>;
 
   abort(reason: string): void;
   appendMessages(messages: readonly Message[]): void;

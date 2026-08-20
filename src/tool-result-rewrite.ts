@@ -18,41 +18,34 @@ export const createToolResultRewriteProcessor = <
   Metadata extends Record<string, unknown> = Record<string, unknown>,
 >(
   rewrite: ToolResultRewrite<Message>,
-): MessageProcessor<Message, Initial, Step, Services, Metadata> => {
-  const pinned = new Map<string, Message>();
-  let pinnedGeneration: number | undefined;
-  return {
-    id: 'history.rewrite-tool-results',
-    phase: 'history',
-    access: { reads: ['content', 'ids'], writes: 'content' },
-    process(context) {
-      if (pinnedGeneration !== context.generation) {
-        pinned.clear();
-        pinnedGeneration = context.generation;
+): MessageProcessor<Message, Initial, Step, Services, Metadata> => ({
+  id: 'history.rewrite-tool-results',
+  phase: 'history',
+  access: { reads: ['content', 'ids'], writes: 'content' },
+  process(context) {
+    const pinned = context.toolResultPins;
+    for (let index = 0; index < context.messages.length; index += 1) {
+      const message = context.messages[index];
+      if (message === undefined) continue;
+      const toolCallId = context.getToolResultId(message);
+      if (!toolCallId) continue;
+      if (pinned.has(toolCallId)) {
+        const existing = pinned.get(toolCallId);
+        if (existing !== undefined) context.replaceMessage(index, existing);
+        continue;
       }
-      for (let index = 0; index < context.messages.length; index += 1) {
-        const message = context.messages[index];
-        if (message === undefined) continue;
-        const toolCallId = context.getToolResultId(message);
-        if (!toolCallId) continue;
-        if (pinned.has(toolCallId)) {
-          const existing = pinned.get(toolCallId);
-          if (existing !== undefined) context.replaceMessage(index, existing);
-          continue;
+      const result = rewrite({ index, message, toolCallId });
+      if (typeof result === 'string') {
+        context.replaceToolResultText(index, result);
+      } else if (result !== undefined) {
+        const nextId = context.getToolResultId(result);
+        if (nextId !== toolCallId) {
+          throw new Error(`tool result rewrite changed toolCallId ${toolCallId}`);
         }
-        const result = rewrite({ index, message, toolCallId });
-        if (typeof result === 'string') {
-          context.replaceToolResultText(index, result);
-        } else if (result !== undefined) {
-          const nextId = context.getToolResultId(result);
-          if (nextId !== toolCallId) {
-            throw new Error(`tool result rewrite changed toolCallId ${toolCallId}`);
-          }
-          context.replaceMessage(index, result);
-        }
-        const applied = context.messages[index];
-        if (applied !== undefined) pinned.set(toolCallId, applied);
+        context.replaceMessage(index, result);
       }
-    },
-  };
-};
+      const applied = context.messages[index];
+      if (applied !== undefined) pinned.set(toolCallId, applied);
+    }
+  },
+});
