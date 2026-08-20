@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { applyLastUserContributions, lastUserPinKey } from '../src/last-user-pin.js';
 import {
   BaseFirstUserContentProvider,
   BaseLastUserContentProvider,
@@ -303,6 +304,148 @@ describe('pinned last-user contributions', () => {
       'ask',
       'answer',
       'late section',
+      'next',
+    ]);
+  });
+
+  it('replays carrier pins by increasing insertAt, not contribution visit order', async () => {
+    class FirstCarrier extends BaseLastUserContentProvider<
+      TestMessage,
+      { agent: string },
+      { turn: number },
+      Record<string, never>,
+      { visited?: boolean }
+    > {
+      readonly id = 'first.carrier';
+      constructor() {
+        super({ pin: true, sourceType: 'knowledge' });
+      }
+      enabled(
+        context: MessagePipelineContext<
+          TestMessage,
+          { agent: string },
+          { turn: number },
+          Record<string, never>,
+          { visited?: boolean }
+        >,
+      ) {
+        return context.step.turn >= 2;
+      }
+      protected build() {
+        return 'first carrier';
+      }
+    }
+    class SecondCarrier extends BaseLastUserContentProvider<
+      TestMessage,
+      { agent: string },
+      { turn: number },
+      Record<string, never>,
+      { visited?: boolean }
+    > {
+      readonly id = 'second.carrier';
+      constructor() {
+        super({ pin: true, sourceType: 'knowledge' });
+      }
+      enabled(
+        context: MessagePipelineContext<
+          TestMessage,
+          { agent: string },
+          { turn: number },
+          Record<string, never>,
+          { visited?: boolean }
+        >,
+      ) {
+        return context.step.turn >= 2;
+      }
+      protected build() {
+        return 'second carrier';
+      }
+    }
+
+    const engine = createEngine({
+      modules: [{ id: 'carriers', processors: [new FirstCarrier(), new SecondCarrier()] }],
+    });
+    engine.append([message('ask')]);
+    await engine.compileTurn({ step: { turn: 1 } });
+    engine.append([message('answer', 'assistant')]);
+    const compiled = await engine.compileTurn({ step: { turn: 2 } });
+    expect(compiled.messages.map((item) => item.content)).toEqual([
+      'ask',
+      'answer',
+      'first carrier',
+      'second carrier',
+    ]);
+    expect(engine.getMessages().map((item) => item.content)).toEqual(['ask', 'answer']);
+
+    engine.append([message('next')]);
+    const second = await engine.compileTurn({ step: { turn: 3 } });
+    expect(second.messages.map((item) => item.content)).toEqual([
+      'ask',
+      'answer',
+      'first carrier',
+      'second carrier',
+      'next',
+    ]);
+  });
+
+  it('replays carriers by insertAt even when later pins are visited first', () => {
+    const adapter = createTestAdapter();
+    const messageList = [message('ask'), message('answer', 'assistant'), message('next')];
+    const messageIds = ['raw:ask', 'raw:answer', 'raw:next'];
+    const lastUserPins = new Map([
+      [
+        lastUserPinKey('first.carrier', 'first.carrier:content'),
+        { kind: 'carrier' as const, insertAt: 2, text: 'first carrier' },
+      ],
+      [
+        lastUserPinKey('second.carrier', 'second.carrier:content'),
+        { kind: 'carrier' as const, insertAt: 3, text: 'second carrier' },
+      ],
+    ]);
+
+    applyLastUserContributions({
+      adapter,
+      committedRawIds: new Set(['raw:ask', 'raw:answer']),
+      lastUserPins,
+      messageIds,
+      messageList,
+      contributions: [
+        {
+          pin: true,
+          slot: 'last-user',
+          order: 0,
+          sequence: 0,
+          content: {
+            cacheScope: 'session',
+            id: 'second.carrier:content',
+            moduleId: 'carriers',
+            processorId: 'second.carrier',
+            sourceType: 'knowledge',
+            text: 'second carrier',
+          },
+        },
+        {
+          pin: true,
+          slot: 'last-user',
+          order: 1,
+          sequence: 1,
+          content: {
+            cacheScope: 'session',
+            id: 'first.carrier:content',
+            moduleId: 'carriers',
+            processorId: 'first.carrier',
+            sourceType: 'knowledge',
+            text: 'first carrier',
+          },
+        },
+      ],
+    });
+
+    expect(messageList.map((item) => item.content)).toEqual([
+      'ask',
+      'answer',
+      'first carrier',
+      'second carrier',
       'next',
     ]);
   });

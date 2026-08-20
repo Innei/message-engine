@@ -126,13 +126,33 @@ export const applyLastUserContributions = <Message>(input: {
     }
   }
 
+  const pendingLand: SequencedContribution[] = [];
+  const carrierPins: Array<Extract<LastUserPin, { kind: 'carrier' }>> = [];
+  const messagePins: Array<Extract<LastUserPin, { kind: 'message' }>> = [];
+
   for (const contribution of pinned) {
     const key = lastUserPinKey(contribution.content.processorId, contribution.content.id);
     const existing = lastUserPins.get(key);
-    if (existing) {
-      if (replayPin(adapter, existing, messageIds, messageList)) indexDirty = true;
+    if (existing === undefined) {
+      pendingLand.push(contribution);
       continue;
     }
+    if (existing.kind === 'carrier') {
+      carrierPins.push(existing);
+      continue;
+    }
+    messagePins.push(existing);
+  }
+
+  carrierPins.sort((left, right) => left.insertAt - right.insertAt);
+  for (const pin of carrierPins) {
+    if (replayPin(adapter, pin, messageIds, messageList)) indexDirty = true;
+  }
+  for (const pin of messagePins) {
+    replayPin(adapter, pin, messageIds, messageList);
+  }
+  for (const contribution of pendingLand) {
+    const key = lastUserPinKey(contribution.content.processorId, contribution.content.id);
     if (
       landPinnedContribution({
         adapter,
