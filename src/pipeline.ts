@@ -217,6 +217,7 @@ export class PipelineExecutionContext<
     initialIndex?: MessageIndexSnapshot,
     committedRawCount = 0,
     private readonly lastUserPins: Map<string, LastUserPin> = new Map(),
+    readonly generation = 0,
   ) {
     this.messageList = [...rawMessages];
     this.messageIds = [...rawMessageIds];
@@ -286,6 +287,10 @@ export class PipelineExecutionContext<
     this.contributionSequence += 1;
   }
 
+  getToolResultId(message: Message): string | undefined {
+    return this.adapter.getToolResultId?.(message);
+  }
+
   replaceMessage(index: number, message: Message): void {
     if (index < 0 || index >= this.messageList.length) {
       throw new RangeError(`Message index ${index} is out of bounds`);
@@ -303,6 +308,18 @@ export class PipelineExecutionContext<
     );
     this.indexDirty = true;
     this.mutationRevision += 1;
+  }
+
+  replaceToolResultText(index: number, text: string): void {
+    const replace = this.adapter.replaceToolResultText;
+    if (!replace) {
+      throw new PipelineConfigurationError('replaceToolResultText is not implemented by adapter');
+    }
+    const current = this.messageList[index];
+    if (index < 0 || index >= this.messageList.length || current === undefined) {
+      throw new RangeError(`Message index ${index} is out of bounds`);
+    }
+    this.replaceMessage(index, replace(current, text));
   }
 
   setMetadata<Key extends keyof Metadata>(key: Key, value: Metadata[Key]): void {

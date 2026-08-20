@@ -475,6 +475,7 @@ export class SessionMessagesEngine<
       this.index.snapshot(),
       this.lastCompiledMessageCount,
       this.lastUserPins,
+      this.generationValue,
     );
     const processorStats = await executePipeline({
       context,

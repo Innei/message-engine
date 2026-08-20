@@ -79,6 +79,7 @@ export interface MessagePipelineContext<
 
   readonly aborted: boolean;
   readonly abortReason: string | undefined;
+  readonly generation: number;
   readonly index: MessageIndexSnapshot;
   readonly messages: readonly Message[];
   readonly metadata: Metadata;
@@ -87,8 +88,10 @@ export interface MessagePipelineContext<
   abort(reason: string): void;
   appendMessages(messages: readonly Message[]): void;
   contribute(contribution: ContextContributionInput): void;
+  getToolResultId(message: Message): string | undefined;
   replaceMessage(index: number, message: Message): void;
   replaceMessages(messages: readonly Message[]): void;
+  replaceToolResultText(index: number, text: string): void;
   setMetadata<Key extends keyof Metadata>(key: Key, value: Metadata[Key]): void;
   setSystemPrompt(systemPrompt: string): void;
 }
