@@ -298,6 +298,7 @@ export class SessionMessagesEngine<
     this.inputReferences.length = 0;
     this.index.clear();
     this.sessionContributionCache.clear();
+    this.lastUserPins.clear();
 
     if (errors.length > 0) throw new AggregateError(errors, 'Message engine teardown failed');
     return summary;
@@ -566,6 +567,7 @@ export class SessionMessagesEngine<
     this.lastCompiledGeneration = -1;
     this.lastCompiledMessageCount = 0;
     this.sessionContributionCache.clear();
+    this.lastUserPins.clear();
   }
 
   private async invokeHook(name: 'onPrefixMutation', value: PrefixMutationEvent): Promise<void>;

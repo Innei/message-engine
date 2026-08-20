@@ -5,6 +5,7 @@ import {
   BaseFirstUserContentProvider,
   BaseLastUserContentProvider,
   PipelineConfigurationError,
+  PrefixMutationError,
   SessionMessagesEngine,
   type MessageAdapter,
   type MessagePipelineContext,
@@ -575,5 +576,65 @@ describe('pinned last-user contributions', () => {
       'answer',
       'next\n\nlate section',
     ]);
+  });
+
+  it('rebuilds a pin after invalidatePrefix', async () => {
+    let builds = 0;
+    class PinnedSection extends BaseLastUserContentProvider<
+      TestMessage,
+      { agent: string },
+      { turn: number },
+      Record<string, never>,
+      { visited?: boolean }
+    > {
+      readonly id = 'pinned.section';
+      constructor() {
+        super({ pin: true, sourceType: 'knowledge' });
+      }
+      protected build() {
+        builds += 1;
+        return `snapshot-${builds}`;
+      }
+    }
+    const engine = createEngine({
+      modules: [{ id: 'pinned', processors: [new PinnedSection()] }],
+    });
+    engine.append([message('ask')]);
+    await engine.compileTurn({ step: { turn: 1 } });
+    await engine.invalidatePrefix({ reason: 'pipeline-changed', expected: true });
+    engine.append([message('answer', 'assistant'), message('again')]);
+    const after = await engine.compileTurn({ step: { turn: 2 } });
+    expect(builds).toBe(2);
+    expect(after.messages.at(-1)?.content).toBe('again\n\nsnapshot-2');
+  });
+
+  it('does not clear pins when strict mode blocks a transcript mutation', async () => {
+    class PinnedSection extends BaseLastUserContentProvider<
+      TestMessage,
+      { agent: string },
+      { turn: number },
+      Record<string, never>,
+      { visited?: boolean }
+    > {
+      readonly id = 'pinned.section';
+      constructor() {
+        super({ pin: true, sourceType: 'knowledge' });
+      }
+      protected build() {
+        return 'workspace snapshot';
+      }
+    }
+    const engine = createEngine({
+      modules: [{ id: 'pinned', processors: [new PinnedSection()] }],
+      strict: true,
+    });
+    engine.append([message('ask')]);
+    await engine.compileTurn({ step: { turn: 1 } });
+    await expect(engine.syncTranscript([message('mutated')])).rejects.toBeInstanceOf(
+      PrefixMutationError,
+    );
+    engine.append([message('answer', 'assistant')]);
+    const after = await engine.compileTurn({ step: { turn: 2 } });
+    expect(after.messages[0]?.content).toBe('ask\n\nworkspace snapshot');
   });
 });
