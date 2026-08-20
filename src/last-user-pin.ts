@@ -53,26 +53,44 @@ const isCommittedRawId = (
   committedRawIds: ReadonlySet<string>,
 ): boolean => messageId !== undefined && committedRawIds.has(messageId);
 
+const resolveHostLastUserIndex = (
+  hostLastUserId: string | undefined,
+  messageIds: readonly string[],
+): number | null => {
+  if (hostLastUserId === undefined) return null;
+  const index = messageIds.indexOf(hostLastUserId);
+  if (index === -1) return null;
+  return index;
+};
+
 const landPinnedContribution = <Message>(input: {
   adapter: MessageAdapter<Message>;
   committedRawIds: ReadonlySet<string>;
+  hostLastUserId: string | undefined;
   key: string;
-  lastUser: number | null;
   lastUserPins: Map<string, LastUserPin>;
   messageIds: string[];
   messageList: Message[];
   text: string;
 }): boolean => {
-  const { adapter, committedRawIds, key, lastUser, lastUserPins, messageIds, messageList, text } =
-    input;
+  const {
+    adapter,
+    committedRawIds,
+    hostLastUserId,
+    key,
+    lastUserPins,
+    messageIds,
+    messageList,
+    text,
+  } = input;
+  const lastUser = resolveHostLastUserIndex(hostLastUserId, messageIds);
   if (lastUser === null) return false;
 
-  const rawMessageId = messageIds[lastUser];
-  if (!isCommittedRawId(rawMessageId, committedRawIds)) {
+  if (!isCommittedRawId(hostLastUserId, committedRawIds)) {
     const message = messageList[lastUser];
-    if (message === undefined || rawMessageId === undefined) return false;
+    if (message === undefined || hostLastUserId === undefined) return false;
     messageList[lastUser] = adapter.appendTextToUserMessage(message, text);
-    lastUserPins.set(key, { kind: 'message', rawMessageId, text });
+    lastUserPins.set(key, { kind: 'message', rawMessageId: hostLastUserId, text });
     return false;
   }
 
@@ -96,7 +114,17 @@ export const applyLastUserContributions = <Message>(input: {
   const pinned = ordered.filter((entry) => entry.pin === true);
   const unpinned = ordered.filter((entry) => entry.pin !== true);
   const lastUser = findLastUserIndex(adapter, messageList);
+  const hostLastUserId = lastUser === null ? undefined : messageIds[lastUser];
   let indexDirty = false;
+
+  if (unpinned.length > 0 && isCommittedRawId(hostLastUserId, committedRawIds)) {
+    const writesCommittedTurn = unpinned.some((entry) => entry.content.cacheScope !== 'session');
+    if (writesCommittedTurn) {
+      throw new PipelineConfigurationError(
+        'last-user contributions cannot modify a committed user message',
+      );
+    }
+  }
 
   for (const contribution of pinned) {
     const key = lastUserPinKey(contribution.content.processorId, contribution.content.id);
@@ -109,8 +137,8 @@ export const applyLastUserContributions = <Message>(input: {
       landPinnedContribution({
         adapter,
         committedRawIds,
+        hostLastUserId,
         key,
-        lastUser,
         lastUserPins,
         messageIds,
         messageList,
@@ -121,21 +149,15 @@ export const applyLastUserContributions = <Message>(input: {
     }
   }
 
-  if (unpinned.length === 0 || lastUser === null) return { indexDirty };
+  if (unpinned.length === 0) return { indexDirty };
 
-  if (isCommittedRawId(messageIds[lastUser], committedRawIds)) {
-    const writesCommittedTurn = unpinned.some((entry) => entry.content.cacheScope !== 'session');
-    if (writesCommittedTurn) {
-      throw new PipelineConfigurationError(
-        'last-user contributions cannot modify a committed user message',
-      );
-    }
-  }
+  const hostLastUser = resolveHostLastUserIndex(hostLastUserId, messageIds);
+  if (hostLastUser === null) return { indexDirty };
 
   const content = unpinned.map((entry) => entry.content.text).join('\n\n');
-  const message = messageList[lastUser];
+  const message = messageList[hostLastUser];
   if (message !== undefined) {
-    messageList[lastUser] = adapter.appendTextToUserMessage(message, content);
+    messageList[hostLastUser] = adapter.appendTextToUserMessage(message, content);
   }
   return { indexDirty };
 };

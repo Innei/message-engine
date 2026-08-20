@@ -6,6 +6,7 @@ import {
   PipelineConfigurationError,
   SessionMessagesEngine,
   type MessageAdapter,
+  type MessagePipelineContext,
 } from '../src/index.js';
 
 interface TestMessage {
@@ -252,5 +253,132 @@ describe('pinned last-user contributions', () => {
     await expect(engine.compileTurn({ step: { turn: 2 } })).rejects.toBeInstanceOf(
       PipelineConfigurationError,
     );
+  });
+
+  it('applies unpinned session last-user to the host last user after a carrier replay', async () => {
+    class LatePin extends BaseLastUserContentProvider<
+      TestMessage,
+      { agent: string },
+      { turn: number },
+      Record<string, never>,
+      { visited?: boolean }
+    > {
+      readonly id = 'late.pin';
+      constructor() {
+        super({ pin: true, sourceType: 'knowledge' });
+      }
+      enabled(
+        context: MessagePipelineContext<
+          TestMessage,
+          { agent: string },
+          { turn: number },
+          Record<string, never>,
+          { visited?: boolean }
+        >,
+      ) {
+        return context.step.turn >= 2;
+      }
+      protected build() {
+        return 'late section';
+      }
+    }
+    class MovingSection extends BaseLastUserContentProvider<
+      TestMessage,
+      { agent: string },
+      { turn: number },
+      Record<string, never>,
+      { visited?: boolean }
+    > {
+      readonly id = 'moving.section';
+      constructor() {
+        super({ cacheScope: 'session', sourceType: 'knowledge' });
+      }
+      protected build() {
+        return 'moving';
+      }
+    }
+    const engine = createEngine({
+      modules: [{ id: 'mix', processors: [new LatePin(), new MovingSection()] }],
+    });
+    engine.append([message('ask')]);
+    await engine.compileTurn({ step: { turn: 1 } });
+    engine.append([message('answer', 'assistant')]);
+    await engine.compileTurn({ step: { turn: 2 } });
+    engine.append([message('next')]);
+    const third = await engine.compileTurn({ step: { turn: 3 } });
+    expect(third.messages.map((item) => item.content)).toEqual([
+      'ask',
+      'answer',
+      'late section',
+      'next\n\nmoving',
+    ]);
+  });
+
+  it('does not record a pin from a compile that throws on turn last-user', async () => {
+    class LatePin extends BaseLastUserContentProvider<
+      TestMessage,
+      { agent: string },
+      { turn: number },
+      Record<string, never>,
+      { visited?: boolean }
+    > {
+      readonly id = 'late.pin';
+      constructor() {
+        super({ pin: true, sourceType: 'knowledge' });
+      }
+      enabled(
+        context: MessagePipelineContext<
+          TestMessage,
+          { agent: string },
+          { turn: number },
+          Record<string, never>,
+          { visited?: boolean }
+        >,
+      ) {
+        return context.step.turn >= 2;
+      }
+      protected build() {
+        return 'late section';
+      }
+    }
+    class TurnAugment extends BaseLastUserContentProvider<
+      TestMessage,
+      { agent: string },
+      { turn: number },
+      Record<string, never>,
+      { visited?: boolean }
+    > {
+      readonly id = 'turn.augment';
+      enabled(
+        context: MessagePipelineContext<
+          TestMessage,
+          { agent: string },
+          { turn: number },
+          Record<string, never>,
+          { visited?: boolean }
+        >,
+      ) {
+        return context.step.turn === 2;
+      }
+      protected build() {
+        return 'now';
+      }
+    }
+    const engine = createEngine({
+      modules: [{ id: 'mix', processors: [new LatePin(), new TurnAugment()] }],
+    });
+    engine.append([message('ask')]);
+    await engine.compileTurn({ step: { turn: 1 } });
+    engine.append([message('answer', 'assistant')]);
+    await expect(engine.compileTurn({ step: { turn: 2 } })).rejects.toBeInstanceOf(
+      PipelineConfigurationError,
+    );
+    engine.append([message('next')]);
+    const third = await engine.compileTurn({ step: { turn: 3 } });
+    expect(third.messages.map((item) => item.content)).toEqual([
+      'ask',
+      'answer',
+      'next\n\nlate section',
+    ]);
   });
 });
