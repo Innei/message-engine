@@ -221,6 +221,40 @@ describe('pinned last-user contributions', () => {
     );
   });
 
+  it('rejects a custom turn processor with session-scoped content writing a committed last user', async () => {
+    const engine = createEngine({
+      modules: [
+        {
+          id: 'custom',
+          processors: [
+            {
+              id: 'custom.turn-session-content',
+              phase: 'user-augmentation',
+              cacheScope: 'turn',
+              process(context) {
+                context.contribute({
+                  slot: 'last-user',
+                  content: {
+                    cacheScope: 'session',
+                    id: 'spoof',
+                    sourceType: 'runtime-state',
+                    text: 'now',
+                  },
+                });
+              },
+            },
+          ],
+        },
+      ],
+    });
+    engine.append([message('ask')]);
+    await engine.compileTurn({ step: { turn: 1 } });
+    engine.append([message('answer', 'assistant')]);
+    await expect(engine.compileTurn({ step: { turn: 2 } })).rejects.toBeInstanceOf(
+      PipelineConfigurationError,
+    );
+  });
+
   it('rejects turn last-user writes to a committed user after a stable-prefix shift', async () => {
     class StablePrefix extends BaseFirstUserContentProvider<
       TestMessage,

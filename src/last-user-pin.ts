@@ -10,7 +10,10 @@ export type LastUserPin =
 export const lastUserPinKey = (processorId: string, contentId: string): string =>
   `${processorId}:${contentId}`;
 
-type SequencedContribution = ContextContribution & { sequence: number };
+type SequencedContribution = ContextContribution & {
+  processorCacheScope?: 'session' | 'turn';
+  sequence: number;
+};
 
 const byContributionOrder = (left: SequencedContribution, right: SequencedContribution): number =>
   (left.order ?? left.sequence) - (right.order ?? right.sequence) || left.sequence - right.sequence;
@@ -104,7 +107,7 @@ const landPinnedContribution = <Message>(input: {
 export const applyLastUserContributions = <Message>(input: {
   adapter: MessageAdapter<Message>;
   committedRawIds: ReadonlySet<string>;
-  contributions: Array<ContextContribution & { sequence: number }>;
+  contributions: SequencedContribution[];
   lastUserPins: Map<string, LastUserPin>;
   messageIds: string[];
   messageList: Message[];
@@ -118,7 +121,7 @@ export const applyLastUserContributions = <Message>(input: {
   let indexDirty = false;
 
   if (unpinned.length > 0 && isCommittedRawId(hostLastUserId, committedRawIds)) {
-    const writesCommittedTurn = unpinned.some((entry) => entry.content.cacheScope !== 'session');
+    const writesCommittedTurn = unpinned.some((entry) => entry.processorCacheScope !== 'session');
     if (writesCommittedTurn) {
       throw new PipelineConfigurationError(
         'last-user contributions cannot modify a committed user message',

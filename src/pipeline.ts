@@ -28,6 +28,7 @@ interface PlannedProcessor<
 }
 
 interface StoredContribution extends ContextContribution {
+  processorCacheScope: 'session' | 'turn';
   sequence: number;
 }
 
@@ -193,6 +194,7 @@ export class PipelineExecutionContext<
   private readonly initialIndex: MessageIndexSnapshot | undefined;
   private abortMessage?: string;
   private activeModuleId = 'engine';
+  private activeProcessorCacheScope: 'session' | 'turn' | undefined;
   private activeProcessorId = 'engine';
   private contributionSequence = 0;
   private indexDirty = false;
@@ -218,6 +220,7 @@ export class PipelineExecutionContext<
     committedRawCount = 0,
     private readonly lastUserPins: Map<string, LastUserPin> = new Map(),
     readonly generation = 0,
+    readonly toolResultPins: Map<string, Message> = new Map(),
   ) {
     this.messageList = [...rawMessages];
     this.messageIds = [...rawMessageIds];
@@ -282,6 +285,7 @@ export class PipelineExecutionContext<
         moduleId: contribution.content.moduleId ?? this.activeModuleId,
         processorId: contribution.content.processorId ?? this.activeProcessorId,
       },
+      processorCacheScope: this.activeProcessorCacheScope ?? 'turn',
       sequence: this.contributionSequence,
     });
     this.contributionSequence += 1;
@@ -331,8 +335,9 @@ export class PipelineExecutionContext<
     this.mutationRevision += 1;
   }
 
-  activate(moduleId: string, processorId: string): void {
+  activate(moduleId: string, processorId: string, cacheScope?: 'session' | 'turn'): void {
     this.activeModuleId = moduleId;
+    this.activeProcessorCacheScope = cacheScope;
     this.activeProcessorId = processorId;
   }
 
@@ -484,7 +489,7 @@ export const executePipeline = async <
     previousPhase = processor.phase;
     if (context.aborted) break;
 
-    context.activate(moduleId, processor.id);
+    context.activate(moduleId, processor.id, processor.cacheScope);
     const startedAt = performance.now();
     const cached =
       processor.cacheScope === 'session' ? sessionContributionCache.get(processor.id) : undefined;
