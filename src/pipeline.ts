@@ -189,6 +189,7 @@ export class PipelineExecutionContext<
   private readonly contributionList: StoredContribution[] = [];
   private readonly appliedContributionList: ContextContribution[] = [];
   private readonly messageIndex: MessageIndex<Message>;
+  private readonly committedRawIds: ReadonlySet<string>;
   private readonly initialIndex: MessageIndexSnapshot | undefined;
   private abortMessage?: string;
   private activeModuleId = 'engine';
@@ -214,7 +215,7 @@ export class PipelineExecutionContext<
     systemPrompt: string,
     readonly signal: AbortSignal | undefined,
     initialIndex?: MessageIndexSnapshot,
-    private readonly committedRawCount = 0,
+    committedRawCount = 0,
     private readonly lastUserPins: Map<string, LastUserPin> = new Map(),
   ) {
     this.messageList = [...rawMessages];
@@ -224,6 +225,7 @@ export class PipelineExecutionContext<
     this.messageIndex = new MessageIndex(adapter);
     this.initialIndex = initialIndex;
     this.usingInitialIndex = initialIndex !== undefined;
+    this.committedRawIds = new Set(rawMessageIds.slice(0, committedRawCount));
     if (!initialIndex) this.messageIndex.rebuild(this.messageList, this.messageIds);
   }
 
@@ -394,7 +396,7 @@ export class PipelineExecutionContext<
     } else if (slot === 'last-user') {
       const result = applyLastUserContributions({
         adapter: this.adapter,
-        committedRawCount: this.committedRawCount,
+        committedRawIds: this.committedRawIds,
         contributions: selected,
         lastUserPins: this.lastUserPins,
         messageIds: this.messageIds,

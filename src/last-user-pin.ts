@@ -48,9 +48,14 @@ const replayPin = <Message>(
   return true;
 };
 
+const isCommittedRawId = (
+  messageId: string | undefined,
+  committedRawIds: ReadonlySet<string>,
+): boolean => messageId !== undefined && committedRawIds.has(messageId);
+
 const landPinnedContribution = <Message>(input: {
   adapter: MessageAdapter<Message>;
-  committedRawCount: number;
+  committedRawIds: ReadonlySet<string>;
   key: string;
   lastUser: number | null;
   lastUserPins: Map<string, LastUserPin>;
@@ -58,13 +63,13 @@ const landPinnedContribution = <Message>(input: {
   messageList: Message[];
   text: string;
 }): boolean => {
-  const { adapter, committedRawCount, key, lastUser, lastUserPins, messageIds, messageList, text } =
+  const { adapter, committedRawIds, key, lastUser, lastUserPins, messageIds, messageList, text } =
     input;
   if (lastUser === null) return false;
 
-  if (lastUser >= committedRawCount) {
+  const rawMessageId = messageIds[lastUser];
+  if (!isCommittedRawId(rawMessageId, committedRawIds)) {
     const message = messageList[lastUser];
-    const rawMessageId = messageIds[lastUser];
     if (message === undefined || rawMessageId === undefined) return false;
     messageList[lastUser] = adapter.appendTextToUserMessage(message, text);
     lastUserPins.set(key, { kind: 'message', rawMessageId, text });
@@ -80,13 +85,13 @@ const landPinnedContribution = <Message>(input: {
 
 export const applyLastUserContributions = <Message>(input: {
   adapter: MessageAdapter<Message>;
-  committedRawCount: number;
+  committedRawIds: ReadonlySet<string>;
   contributions: Array<ContextContribution & { sequence: number }>;
   lastUserPins: Map<string, LastUserPin>;
   messageIds: string[];
   messageList: Message[];
 }): { indexDirty: boolean } => {
-  const { adapter, committedRawCount, lastUserPins, messageIds, messageList } = input;
+  const { adapter, committedRawIds, lastUserPins, messageIds, messageList } = input;
   const ordered = [...input.contributions].sort(byContributionOrder);
   const pinned = ordered.filter((entry) => entry.pin === true);
   const unpinned = ordered.filter((entry) => entry.pin !== true);
@@ -103,7 +108,7 @@ export const applyLastUserContributions = <Message>(input: {
     if (
       landPinnedContribution({
         adapter,
-        committedRawCount,
+        committedRawIds,
         key,
         lastUser,
         lastUserPins,
@@ -118,7 +123,7 @@ export const applyLastUserContributions = <Message>(input: {
 
   if (unpinned.length === 0 || lastUser === null) return { indexDirty };
 
-  if (lastUser < committedRawCount) {
+  if (isCommittedRawId(messageIds[lastUser], committedRawIds)) {
     const writesCommittedTurn = unpinned.some((entry) => entry.content.cacheScope !== 'session');
     if (writesCommittedTurn) {
       throw new PipelineConfigurationError(

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  BaseFirstUserContentProvider,
   BaseLastUserContentProvider,
   PipelineConfigurationError,
   SessionMessagesEngine,
@@ -208,6 +209,42 @@ describe('pinned last-user contributions', () => {
     }
     const engine = createEngine({
       modules: [{ id: 'turn', processors: [new TurnAugment()] }],
+    });
+    engine.append([message('ask')]);
+    await engine.compileTurn({ step: { turn: 1 } });
+    engine.append([message('answer', 'assistant')]);
+    await expect(engine.compileTurn({ step: { turn: 2 } })).rejects.toBeInstanceOf(
+      PipelineConfigurationError,
+    );
+  });
+
+  it('rejects turn last-user writes to a committed user after a stable-prefix shift', async () => {
+    class StablePrefix extends BaseFirstUserContentProvider<
+      TestMessage,
+      { agent: string },
+      { turn: number },
+      Record<string, never>,
+      { visited?: boolean }
+    > {
+      readonly id = 'stable.prefix';
+      protected build() {
+        return 'prefix';
+      }
+    }
+    class TurnAugment extends BaseLastUserContentProvider<
+      TestMessage,
+      { agent: string },
+      { turn: number },
+      Record<string, never>,
+      { visited?: boolean }
+    > {
+      readonly id = 'turn.augment';
+      protected build() {
+        return 'now';
+      }
+    }
+    const engine = createEngine({
+      modules: [{ id: 'mix', processors: [new StablePrefix(), new TurnAugment()] }],
     });
     engine.append([message('ask')]);
     await engine.compileTurn({ step: { turn: 1 } });

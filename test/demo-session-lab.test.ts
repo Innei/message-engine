@@ -84,6 +84,13 @@ describe('real-agent demo integration', () => {
       ]),
     );
 
+    engine.append([
+      {
+        content: [{ text: 'Follow the watchlist instead.', type: 'text' }],
+        role: 'user',
+        timestamp: 2,
+      } as AgentMessage,
+    ]);
     const second = await engine.compileTurn({
       step: {
         modelId: 'openai/gpt-4o-mini',
