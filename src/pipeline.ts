@@ -266,6 +266,9 @@ export class PipelineExecutionContext<
   }
 
   contribute(contribution: ContextContributionInput): void {
+    if (contribution.pin && contribution.slot !== 'last-user') {
+      throw new PipelineConfigurationError('pin: true is only valid for slot "last-user"');
+    }
     this.contributionList.push({
       ...contribution,
       content: {
@@ -479,6 +482,7 @@ export const executePipeline = async <
     try {
       await processor.process(context);
     } catch (error) {
+      if (error instanceof PipelineConfigurationError) throw error;
       throw new PipelineProcessorError(processor.id, error);
     }
 

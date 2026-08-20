@@ -40,6 +40,7 @@ export interface AttributedContent {
 export interface ContextContribution {
   content: AttributedContent;
   order?: number;
+  pin?: boolean;
   slot: ContributionSlot;
 }
 
@@ -49,6 +50,7 @@ export interface ContextContributionInput {
     processorId?: string;
   };
   order?: number;
+  pin?: boolean;
   slot: ContributionSlot;
 }
 

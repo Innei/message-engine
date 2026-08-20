@@ -1,3 +1,4 @@
+import { PipelineConfigurationError } from './errors.js';
 import type {
   AttributedContent,
   Awaitable,
@@ -11,6 +12,7 @@ import type { TokenCacheScope, TokenSourceType } from './token-types.js';
 export interface ContextProviderOptions {
   cacheScope?: 'session' | 'turn';
   contentCacheScope?: TokenCacheScope;
+  pin?: boolean;
   sourceType?: TokenSourceType;
 }
 
@@ -27,12 +29,14 @@ export abstract class BaseContextProvider<
 
   readonly access = { reads: ['content'] as const, writes: 'none' as const };
   readonly cacheScope: 'session' | 'turn';
+  readonly pin: boolean;
   protected readonly contentCacheScope: TokenCacheScope;
   protected readonly sourceType: TokenSourceType;
 
   constructor(options: ContextProviderOptions = {}) {
     this.cacheScope = options.cacheScope ?? 'turn';
     this.contentCacheScope = options.contentCacheScope ?? this.cacheScope;
+    this.pin = options.pin ?? false;
     this.sourceType = options.sourceType ?? 'runtime-state';
   }
 
@@ -52,6 +56,10 @@ export abstract class BaseContextProvider<
           }
         : built;
     if (!content.text.trim()) return;
+    if (this.pin) {
+      context.contribute({ content, pin: true, slot: this.slot });
+      return;
+    }
     context.contribute({ content, slot: this.slot });
   }
 
@@ -104,6 +112,22 @@ export abstract class BaseLastUserContentProvider<
 > extends BaseContextProvider<Message, Initial, Step, Services, Metadata> {
   readonly phase = 'user-augmentation' as const;
   readonly slot = 'last-user' as const;
+
+  constructor(options: ContextProviderOptions = {}) {
+    const cacheScope = options.pin ? (options.cacheScope ?? 'session') : options.cacheScope;
+    if (options.pin && cacheScope === 'turn') {
+      throw new PipelineConfigurationError('pin: true requires cacheScope "session"');
+    }
+    if (options.pin) {
+      super({
+        ...options,
+        cacheScope: cacheScope ?? 'session',
+        contentCacheScope: options.contentCacheScope ?? 'session',
+      });
+      return;
+    }
+    super(options);
+  }
 }
 
 export abstract class BaseVirtualTailProvider<
