@@ -255,6 +255,58 @@ describe('pinned last-user contributions', () => {
     );
   });
 
+  it('appends a compile-time carrier when the first pin would rewrite a committed user', async () => {
+    class LatePin extends BaseLastUserContentProvider<
+      TestMessage,
+      { agent: string },
+      { turn: number },
+      Record<string, never>,
+      { visited?: boolean }
+    > {
+      readonly id = 'late.pin';
+      constructor() {
+        super({ pin: true, sourceType: 'knowledge' });
+      }
+      enabled(
+        context: MessagePipelineContext<
+          TestMessage,
+          { agent: string },
+          { turn: number },
+          Record<string, never>,
+          { visited?: boolean }
+        >,
+      ) {
+        return context.step.turn >= 2;
+      }
+      protected build() {
+        return 'late section';
+      }
+    }
+
+    const engine = createEngine({
+      modules: [{ id: 'late', processors: [new LatePin()] }],
+    });
+    engine.append([message('ask')]);
+    await engine.compileTurn({ step: { turn: 1 } });
+    engine.append([message('answer', 'assistant')]);
+    const compiled = await engine.compileTurn({ step: { turn: 2 } });
+    expect(compiled.messages.map((item) => item.content)).toEqual([
+      'ask',
+      'answer',
+      'late section',
+    ]);
+    expect(engine.getMessages().map((item) => item.content)).toEqual(['ask', 'answer']);
+
+    engine.append([message('next')]);
+    const second = await engine.compileTurn({ step: { turn: 3 } });
+    expect(second.messages.map((item) => item.content)).toEqual([
+      'ask',
+      'answer',
+      'late section',
+      'next',
+    ]);
+  });
+
   it('applies unpinned session last-user to the host last user after a carrier replay', async () => {
     class LatePin extends BaseLastUserContentProvider<
       TestMessage,
