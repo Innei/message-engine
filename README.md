@@ -148,6 +148,22 @@ const runtimeModule: MessageEngineModule<AppMessage, Initial, Step, Services> = 
 
 The abstract providers `BaseSystemPromptProvider`, `BaseFirstUserContentProvider`, `BaseLastUserContentProvider`, and `BaseVirtualTailProvider` cover the common contribution locations while retaining the full processor API for product-specific stages.
 
+Pinned last-user (opt-in): `super({ pin: true })` or `contribute({ slot: 'last-user', pin: true, content })`. The section binds to the first successful target for the engine instance and is replayed there on later compiles. It is not written to `getMessages()`. If that first target is already in the previous compiled prefix, the engine appends a compile-time user message instead of rewriting the committed user. `pin` requires `cacheScope: 'session'`. Omit `pin` to keep current last-user rebinding.
+
+Turn-scoped last-user may only augment a user message appended since the previous compile; otherwise `PipelineConfigurationError`. Use `virtual-tail` for per-turn data after a tool loop.
+
+Tool results: `createToolResultRewriteProcessor(rewrite)` in phase `history`. `rewrite` may return `undefined`, a replacement string (`adapter.replaceToolResultText`), or a message with the same `toolCallId`. Each `toolCallId` is rewritten at most once per generation; `invalidatePrefix()` starts a new generation. Not installed by default.
+
+| Intent                                              | Mechanism                                                           |
+| --------------------------------------------------- | ------------------------------------------------------------------- |
+| Do not pin                                          | Omit `pin`; last-user still rebinds to the current `index.lastUser` |
+| Latest every turn without touching old messages     | `virtual-tail`                                                      |
+| This turn's new user only                           | `last-user` + `cacheScope: 'turn'`                                  |
+| Replace the pinned baseline while the session lives | `invalidatePrefix()`                                                |
+| End the instance                                    | `destroy()`                                                         |
+| No tool-result rewriting                            | Do not install the rewrite processor                                |
+| Custom tool-result / history edits                  | Custom `history` processor + `replaceMessage`                       |
+
 ## Prefix integrity and scan boundaries
 
 The preferred transcript path is event-driven:
