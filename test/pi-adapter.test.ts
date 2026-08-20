@@ -88,4 +88,21 @@ describe('Pi adapter', () => {
 
     expect(result.messages).toEqual([user]);
   });
+
+  it('replaces Pi toolResult text for host rewrites', () => {
+    const original = {
+      content: [{ text: 'huge tool output', type: 'text' }],
+      isError: false,
+      role: 'toolResult',
+      timestamp: 1,
+      toolCallId: 'call-1',
+      toolName: 'search',
+    } as AgentMessage;
+    const replaced = piMessageAdapter.replaceToolResultText?.(original, 'truncated');
+    expect(replaced).toEqual({
+      ...original,
+      content: [{ text: 'truncated', type: 'text' }],
+    });
+    expect(piMessageAdapter.getToolResultId?.(replaced!)).toBe('call-1');
+  });
 });
