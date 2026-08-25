@@ -88,4 +88,56 @@ describe('Pi adapter', () => {
 
     expect(result.messages).toEqual([user]);
   });
+
+  it('reads typed Pi content parts without object-shape guards', () => {
+    const user = {
+      content: [
+        { text: 'look at this', type: 'text' },
+        { data: 'aaa', mimeType: 'image/png', type: 'image' },
+      ],
+      role: 'user',
+      timestamp: 1,
+    } as AgentMessage;
+    expect(piMessageAdapter.getTextSegments(user)).toEqual([
+      { content: 'look at this', framingType: 'user:text', sourceType: 'user' },
+    ]);
+    expect(piMessageAdapter.appendTextToUserMessage(user, 'and that')).toEqual({
+      content: [
+        { text: 'look at this\n\nand that', type: 'text' },
+        { data: 'aaa', mimeType: 'image/png', type: 'image' },
+      ],
+      role: 'user',
+      timestamp: 1,
+    });
+
+    const assistant = {
+      content: [
+        { text: 'calling tools', type: 'text' },
+        { arguments: { path: 'x' }, id: 'call-1', name: 'read_file', type: 'toolCall' },
+      ],
+      role: 'assistant',
+      timestamp: 2,
+    } as AgentMessage;
+    expect(piMessageAdapter.getTextSegments(assistant)).toEqual([
+      { content: 'calling tools', framingType: 'assistant:text', sourceType: 'assistant' },
+      {
+        content: '{"arguments":{"path":"x"},"id":"call-1","name":"read_file","type":"toolCall"}',
+        framingType: 'assistant:tool-call',
+        sourceType: 'tool-call',
+      },
+    ]);
+    expect(piMessageAdapter.getToolCalls?.(assistant)).toEqual([
+      { id: 'call-1', name: 'read_file' },
+    ]);
+    expect(piMessageAdapter.appendTextToUserMessage(assistant, 'nope')).toBe(assistant);
+
+    const toolResult = {
+      content: [{ text: 'ok', type: 'text' }],
+      role: 'toolResult',
+      timestamp: 3,
+      toolCallId: 'call-1',
+    } as AgentMessage;
+    expect(piMessageAdapter.getToolResultId?.(toolResult)).toBe('call-1');
+    expect(piMessageAdapter.getToolResultId?.(user)).toBeUndefined();
+  });
 });

@@ -13,6 +13,9 @@ import type { SessionMessagesEngineOptions } from '../types.js';
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
+const isProviderTextPart = (value: unknown): value is Record<string, unknown> & { type: 'text' } =>
+  isRecord(value) && value.type === 'text';
+
 const piMessageEngineContext = Symbol('message-engine.pi.context');
 
 type ContextTaggedAgentMessage = AgentMessage & {
@@ -69,10 +72,8 @@ const addCacheControl = (
 
   let annotated = false;
   const nextContent = content.map((part, index) => {
-    if (annotated || !isRecord(part) || part.type !== 'text') return part;
-    const hasLaterText = content
-      .slice(index + 1)
-      .some((candidate) => isRecord(candidate) && candidate.type === 'text');
+    if (annotated || !isProviderTextPart(part)) return part;
+    const hasLaterText = content.slice(index + 1).some(isProviderTextPart);
     if (hasLaterText) return part;
     annotated = true;
     return { ...part, cache_control: cacheControl };
@@ -114,7 +115,7 @@ export const createPiOpenRouterPromptCacheBridge = (
       const ordinals = new Set<number>();
       let userOrdinal = -1;
       for (const message of result.messages) {
-        if (!isRecord(message) || message.role !== 'user') continue;
+        if (message.role !== 'user') continue;
         userOrdinal += 1;
         const context = (message as ContextTaggedAgentMessage)[piMessageEngineContext];
         if (context?.slot === 'stable-prefix' && context.cacheScope === 'session') {
@@ -126,7 +127,7 @@ export const createPiOpenRouterPromptCacheBridge = (
   };
 };
 
-const sourceTypeForRole = (role: string): TokenSourceType => {
+const sourceTypeForRole = (role: AgentMessage['role']): TokenSourceType => {
   switch (role) {
     case 'assistant':
       return 'assistant';
@@ -140,20 +141,17 @@ const sourceTypeForRole = (role: string): TokenSourceType => {
 };
 
 const getTextSegments = (message: AgentMessage): MessageTextSegment[] => {
-  if (!isRecord(message)) return [];
-  const role = typeof message.role === 'string' ? message.role : 'custom';
-  const sourceType = sourceTypeForRole(role);
-  const content = message.content;
-  if (typeof content === 'string') return [{ content, sourceType }];
-  if (!Array.isArray(content)) return [];
+  const sourceType = sourceTypeForRole(message.role);
+  if (!('content' in message)) return [];
+  if (typeof message.content === 'string') return [{ content: message.content, sourceType }];
+  if (!Array.isArray(message.content)) return [];
 
   const segments: MessageTextSegment[] = [];
-  for (const part of content) {
-    if (!isRecord(part)) continue;
-    if (typeof part.text === 'string') {
+  for (const part of message.content) {
+    if (part.type === 'text') {
       segments.push({
         content: part.text,
-        framingType: `${role}:${String(part.type)}`,
+        framingType: `${message.role}:text`,
         sourceType,
       });
     } else if (part.type === 'toolCall') {
@@ -171,25 +169,24 @@ export const piMessageAdapter: MessageAdapter<AgentMessage> = {
   id: 'pi-agent-core/agent-message@0.84',
 
   appendTextToUserMessage(message, content) {
-    if (!isRecord(message) || message.role !== 'user') return message;
+    if (message.role !== 'user') return message;
 
     if (typeof message.content === 'string') {
-      return { ...message, content: `${message.content}\n\n${content}` } as AgentMessage;
+      return { ...message, content: `${message.content}\n\n${content}` };
     }
-    if (!Array.isArray(message.content)) return message;
 
     const parts = [...message.content];
     for (let index = parts.length - 1; index >= 0; index -= 1) {
       const part = parts[index];
-      if (!isRecord(part) || part.type !== 'text' || typeof part.text !== 'string') continue;
+      if (!part || part.type !== 'text') continue;
       parts[index] = { ...part, text: `${part.text}\n\n${content}` };
-      return { ...message, content: parts } as AgentMessage;
+      return { ...message, content: parts };
     }
 
     return {
       ...message,
       content: [...parts, { text: content, type: 'text' }],
-    } as AgentMessage;
+    };
   },
 
   clone: (message) => structuredClone(message),
@@ -204,30 +201,23 @@ export const piMessageAdapter: MessageAdapter<AgentMessage> = {
 
   fingerprint,
 
-  getRole: (message) =>
-    isRecord(message) && typeof message.role === 'string' ? message.role : 'custom',
+  getRole: (message) => message.role,
 
   getTextSegments,
 
   getToolCalls(message) {
-    if (!isRecord(message) || message.role !== 'assistant' || !Array.isArray(message.content)) {
-      return [];
-    }
+    if (message.role !== 'assistant') return [];
 
     const calls: Array<{ id: string; name: string }> = [];
     for (const part of message.content) {
-      if (!isRecord(part) || part.type !== 'toolCall') continue;
-      if (typeof part.id === 'string' && typeof part.name === 'string') {
+      if (part.type === 'toolCall') {
         calls.push({ id: part.id, name: part.name });
       }
     }
     return calls;
   },
 
-  getToolResultId: (message) =>
-    isRecord(message) && message.role === 'toolResult' && typeof message.toolCallId === 'string'
-      ? message.toolCallId
-      : undefined,
+  getToolResultId: (message) => (message.role === 'toolResult' ? message.toolCallId : undefined),
 };
 
 export type PiMessageEngineOptions<
