@@ -4,40 +4,23 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <meta name="theme-color" content="#0b0c0e" />
-    <title>Message Engine Devtools</title>
+    <meta name="theme-color" content="#08090a" />
+    <title>Message Engine Devtools Inspector</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <style>
       html,
       body,
       #root {
         height: 100%;
         margin: 0;
-      }
-      body {
-        padding: 16px;
-        background-color: #08090b;
-        background-image:
-          linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-        background-size: 24px 24px;
-      }
-      #root {
-        max-width: 1440px;
-        min-height: calc(100vh - 32px);
-        margin: 0 auto;
-      }
-      #root > * {
-        min-height: calc(100vh - 32px);
-      }
-
-      @media (max-width: 680px) {
-        body {
-          padding: 0;
-        }
-        #root,
-        #root > * {
-          min-height: 100vh;
-        }
+        padding: 0;
+        overflow: hidden;
+        background-color: #08090a;
       }
     </style>
   </head>
