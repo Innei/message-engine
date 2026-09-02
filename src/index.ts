@@ -8,4 +8,5 @@ export * from './registry.js';
 export * from './session-engine.js';
 export * from './token-accounting.js';
 export * from './token-types.js';
+export * from './tool-result-rewrite.js';
 export * from './types.js';

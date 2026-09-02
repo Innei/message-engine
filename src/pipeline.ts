@@ -1,5 +1,10 @@
 import { PipelineConfigurationError, PipelineProcessorError } from './errors.js';
 import { fingerprint } from './fingerprint.js';
+import {
+  applyLastUserContributions,
+  applyPinnedUserContributions,
+  type LastUserPin,
+} from './last-user-pin.js';
 import type { MessageAdapter } from './message-adapter.js';
 import { MessageIndex } from './message-index.js';
 import type {
@@ -26,7 +31,8 @@ interface PlannedProcessor<
   registrationIndex: number;
 }
 
-interface StoredContribution extends ContextContribution {
+export interface StoredContribution extends ContextContribution {
+  processorCacheScope: 'session' | 'turn';
   sequence: number;
 }
 
@@ -38,7 +44,8 @@ const contributionSlotsByPhase: Partial<
   Record<PipelinePhase, readonly ContextContribution['slot'][]>
 > = {
   'stable-context': ['stable-prefix'],
-  'user-augmentation': ['last-user'],
+  // last-user runs first so its committed-user guard throws before any pin is recorded
+  'user-augmentation': ['last-user', 'pinned-user'],
   'virtual-tail': ['virtual-tail'],
   system: ['system'],
 };
@@ -188,9 +195,11 @@ export class PipelineExecutionContext<
   private readonly contributionList: StoredContribution[] = [];
   private readonly appliedContributionList: ContextContribution[] = [];
   private readonly messageIndex: MessageIndex<Message>;
+  private readonly committedRawIds: ReadonlySet<string>;
   private readonly initialIndex: MessageIndexSnapshot | undefined;
   private abortMessage?: string;
   private activeModuleId = 'engine';
+  private activeProcessorCacheScope: 'session' | 'turn' | undefined;
   private activeProcessorId = 'engine';
   private contributionSequence = 0;
   private indexDirty = false;
@@ -213,6 +222,9 @@ export class PipelineExecutionContext<
     systemPrompt: string,
     readonly signal: AbortSignal | undefined,
     initialIndex?: MessageIndexSnapshot,
+    committedRawCount = 0,
+    private readonly lastUserPins: Map<string, LastUserPin> = new Map(),
+    readonly toolResultPins: Map<string, Message> = new Map(),
   ) {
     this.messageList = [...rawMessages];
     this.messageIds = [...rawMessageIds];
@@ -221,6 +233,7 @@ export class PipelineExecutionContext<
     this.messageIndex = new MessageIndex(adapter);
     this.initialIndex = initialIndex;
     this.usingInitialIndex = initialIndex !== undefined;
+    this.committedRawIds = new Set(rawMessageIds.slice(0, committedRawCount));
     if (!initialIndex) this.messageIndex.rebuild(this.messageList, this.messageIds);
   }
 
@@ -273,9 +286,14 @@ export class PipelineExecutionContext<
         moduleId: contribution.content.moduleId ?? this.activeModuleId,
         processorId: contribution.content.processorId ?? this.activeProcessorId,
       },
+      processorCacheScope: this.activeProcessorCacheScope ?? 'turn',
       sequence: this.contributionSequence,
     });
     this.contributionSequence += 1;
+  }
+
+  getToolResultId(message: Message): string | undefined {
+    return this.adapter.getToolResultId?.(message);
   }
 
   replaceMessage(index: number, message: Message): void {
@@ -297,6 +315,16 @@ export class PipelineExecutionContext<
     this.mutationRevision += 1;
   }
 
+  replaceToolResultText(index: number, text: string): void {
+    const replace = this.adapter.replaceToolResultText;
+    if (!replace) {
+      throw new PipelineConfigurationError('replaceToolResultText is not implemented by adapter');
+    }
+    const current = this.messageList[index];
+    if (current === undefined) throw new RangeError(`Message index ${index} is out of bounds`);
+    this.replaceMessage(index, replace(current, text));
+  }
+
   setMetadata<Key extends keyof Metadata>(key: Key, value: Metadata[Key]): void {
     this.metadata[key] = value;
   }
@@ -306,22 +334,26 @@ export class PipelineExecutionContext<
     this.mutationRevision += 1;
   }
 
-  activate(moduleId: string, processorId: string): void {
+  activate(moduleId: string, processorId: string, cacheScope?: 'session' | 'turn'): void {
     this.activeModuleId = moduleId;
+    this.activeProcessorCacheScope = cacheScope;
     this.activeProcessorId = processorId;
   }
 
   applyContributionsForPhase(phase: PipelinePhase): void {
     const slots = contributionSlotsByPhase[phase];
     if (!slots) return;
-
-    for (const slot of slots) this.applySlot(slot);
+    this.applySlots(slots);
   }
 
   applyRemainingContributions(): void {
-    for (const slot of ['system', 'stable-prefix', 'last-user', 'virtual-tail'] as const) {
-      this.applySlot(slot);
-    }
+    this.applySlots(['system', 'stable-prefix', 'last-user', 'pinned-user', 'virtual-tail']);
+  }
+
+  private applySlots(slots: readonly ContextContribution['slot'][]): void {
+    const lastUser = this.index.lastUser;
+    const hostLastUserId = lastUser === null ? undefined : this.messageIds[lastUser];
+    for (const slot of slots) this.applySlot(slot, hostLastUserId);
   }
 
   contributionCount(): number {
@@ -350,7 +382,7 @@ export class PipelineExecutionContext<
     return [...this.messageList];
   }
 
-  private applySlot(slot: ContextContribution['slot']): void {
+  private applySlot(slot: ContextContribution['slot'], hostLastUserId: string | undefined): void {
     const selected = this.contributionList
       .filter((entry) => entry.slot === slot)
       .sort(
@@ -360,9 +392,11 @@ export class PipelineExecutionContext<
       );
     if (selected.length === 0) return;
 
-    this.appliedContributionList.push(
-      ...selected.map(({ sequence: _, ...contribution }) => contribution),
-    );
+    if (slot !== 'pinned-user') {
+      this.appliedContributionList.push(
+        ...selected.map(({ sequence: _, ...contribution }) => contribution),
+      );
+    }
 
     const content = selected.map((entry) => entry.content.text).join('\n\n');
     const cacheScope = selected.every((entry) => entry.content.cacheScope === 'session')
@@ -385,14 +419,27 @@ export class PipelineExecutionContext<
         this.messageIds.splice(firstUser, 0, `injected:stable-prefix:${fingerprint(content)}`);
         this.indexDirty = true;
       }
+    } else if (slot === 'pinned-user') {
+      const result = applyPinnedUserContributions({
+        adapter: this.adapter,
+        committedRawIds: this.committedRawIds,
+        contributions: selected,
+        hostLastUserId,
+        lastUserPins: this.lastUserPins,
+        messageIds: this.messageIds,
+        messageList: this.messageList,
+      });
+      this.appliedContributionList.push(...result.applied);
+      if (result.indexDirty) this.indexDirty = true;
     } else if (slot === 'last-user') {
-      const lastUser = this.index.lastUser;
-      if (lastUser !== null) {
-        const message = this.messageList[lastUser];
-        if (message !== undefined) {
-          this.messageList[lastUser] = this.adapter.appendTextToUserMessage(message, content);
-        }
-      }
+      applyLastUserContributions({
+        adapter: this.adapter,
+        committedRawIds: this.committedRawIds,
+        contributions: selected,
+        hostLastUserId,
+        messageIds: this.messageIds,
+        messageList: this.messageList,
+      });
     } else {
       this.messageList.push(
         this.adapter.createUserMessage(content, undefined, { cacheScope, slot: 'virtual-tail' }),
@@ -457,7 +504,7 @@ export const executePipeline = async <
     previousPhase = processor.phase;
     if (context.aborted) break;
 
-    context.activate(moduleId, processor.id);
+    context.activate(moduleId, processor.id, processor.cacheScope);
     const startedAt = performance.now();
     const cached =
       processor.cacheScope === 'session' ? sessionContributionCache.get(processor.id) : undefined;
@@ -479,6 +526,7 @@ export const executePipeline = async <
     try {
       await processor.process(context);
     } catch (error) {
+      if (error instanceof PipelineConfigurationError) throw error;
       throw new PipelineProcessorError(processor.id, error);
     }
 

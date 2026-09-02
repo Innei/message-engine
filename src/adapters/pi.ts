@@ -228,6 +228,24 @@ export const piMessageAdapter: MessageAdapter<AgentMessage> = {
     isRecord(message) && message.role === 'toolResult' && typeof message.toolCallId === 'string'
       ? message.toolCallId
       : undefined,
+
+  replaceToolResultText(message, text) {
+    if (!isRecord(message) || message.role !== 'toolResult') return message;
+    if (!Array.isArray(message.content)) {
+      return { ...message, content: text } as unknown as AgentMessage;
+    }
+    const parts = [...message.content];
+    const textIndex = parts.findIndex(
+      (part) => isRecord(part) && part.type === 'text' && typeof part.text === 'string',
+    );
+    if (textIndex === -1) {
+      return { ...message, content: [{ text, type: 'text' }] } as AgentMessage;
+    }
+    const current = parts[textIndex];
+    if (!isRecord(current)) return message;
+    parts[textIndex] = { ...current, text } as (typeof parts)[number];
+    return { ...message, content: parts } as AgentMessage;
+  },
 };
 
 export type PiMessageEngineOptions<

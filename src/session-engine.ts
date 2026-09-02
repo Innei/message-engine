@@ -1,5 +1,6 @@
 import { ConcurrentCompilationError, EngineDestroyedError, PrefixMutationError } from './errors.js';
 import { fingerprint } from './fingerprint.js';
+import type { LastUserPin } from './last-user-pin.js';
 import type { MessageAdapter } from './message-adapter.js';
 import { messageToTokenSegments } from './message-adapter.js';
 import { MessageIndex } from './message-index.js';
@@ -91,6 +92,7 @@ export class SessionMessagesEngine<
   private readonly inputReferences: Message[] = [];
   private lastCompiledGeneration = -1;
   private lastCompiledMessageCount = 0;
+  private readonly lastUserPins = new Map<string, LastUserPin>();
   private readonly logger: EngineLogger;
   private messageSequence = 0;
   private prefixViolationCount = 0;
@@ -102,6 +104,7 @@ export class SessionMessagesEngine<
   private readonly services: Services;
   private readonly strictHooks: boolean;
   private readonly tokenAccounting?: TokenAccountingManager;
+  private readonly toolResultPins = new Map<string, Message>();
   private turnSequence = 0;
   private readonly plan: PipelinePlan<Message, Initial, Step, Services, Metadata>;
 
@@ -295,7 +298,7 @@ export class SessionMessagesEngine<
     this.rawTokenSegments.length = 0;
     this.inputReferences.length = 0;
     this.index.clear();
-    this.sessionContributionCache.clear();
+    this.clearGenerationCaches();
 
     if (errors.length > 0) throw new AggregateError(errors, 'Message engine teardown failed');
     return summary;
@@ -470,6 +473,9 @@ export class SessionMessagesEngine<
       this.baseSystemPrompt,
       signal,
       this.index.snapshot(),
+      this.lastCompiledMessageCount,
+      this.lastUserPins,
+      this.toolResultPins,
     );
     const processorStats = await executePipeline({
       context,
@@ -561,7 +567,13 @@ export class SessionMessagesEngine<
     this.generationValue += 1;
     this.lastCompiledGeneration = -1;
     this.lastCompiledMessageCount = 0;
+    this.clearGenerationCaches();
+  }
+
+  private clearGenerationCaches(): void {
     this.sessionContributionCache.clear();
+    this.lastUserPins.clear();
+    this.toolResultPins.clear();
   }
 
   private async invokeHook(name: 'onPrefixMutation', value: PrefixMutationEvent): Promise<void>;

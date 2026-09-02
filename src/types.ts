@@ -24,7 +24,8 @@ export const PIPELINE_PHASES = [
 
 export type PipelinePhase = (typeof PIPELINE_PHASES)[number];
 
-export type ContributionSlot = 'last-user' | 'stable-prefix' | 'system' | 'virtual-tail';
+export type ContributionSlot =
+  'last-user' | 'pinned-user' | 'stable-prefix' | 'system' | 'virtual-tail';
 
 export interface AttributedContent {
   cacheScope: TokenCacheScope;
@@ -85,8 +86,10 @@ export interface MessagePipelineContext<
   abort(reason: string): void;
   appendMessages(messages: readonly Message[]): void;
   contribute(contribution: ContextContributionInput): void;
+  getToolResultId(message: Message): string | undefined;
   replaceMessage(index: number, message: Message): void;
   replaceMessages(messages: readonly Message[]): void;
+  replaceToolResultText(index: number, text: string): void;
   setMetadata<Key extends keyof Metadata>(key: Key, value: Metadata[Key]): void;
   setSystemPrompt(systemPrompt: string): void;
 }

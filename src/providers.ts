@@ -106,6 +106,21 @@ export abstract class BaseLastUserContentProvider<
   readonly slot = 'last-user' as const;
 }
 
+export abstract class BasePinnedUserProvider<
+  Message = unknown,
+  Initial = unknown,
+  Step = unknown,
+  Services = Record<string, never>,
+  Metadata extends Record<string, unknown> = Record<string, unknown>,
+> extends BaseContextProvider<Message, Initial, Step, Services, Metadata> {
+  readonly phase = 'user-augmentation' as const;
+  readonly slot = 'pinned-user' as const;
+
+  constructor(options: ContextProviderOptions = {}) {
+    super({ cacheScope: 'session', ...options });
+  }
+}
+
 export abstract class BaseVirtualTailProvider<
   Message = unknown,
   Initial = unknown,

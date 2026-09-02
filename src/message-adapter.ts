@@ -26,6 +26,7 @@ export interface MessageAdapter<Message> {
   getTextSegments(message: Message): readonly MessageTextSegment[];
   getToolCalls?(message: Message): ReadonlyArray<{ id: string; name: string }>;
   getToolResultId?(message: Message): string | undefined;
+  replaceToolResultText?(message: Message, text: string): Message;
 }
 
 export const messageToTokenSegments = <Message>(

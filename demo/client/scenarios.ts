@@ -36,4 +36,23 @@ export const EXPERIMENT_SCENARIOS: ExperimentScenario[] = [
     tag: 'Integrity Check',
     title: 'Committed Prefix Recall',
   },
+  {
+    badge: 'SCENARIO 04',
+    description:
+      'Each user message carries a pinned request_context with route, selection, and sent_at. It lands once and never moves, so it survives tool loops without rewriting the cached prefix.',
+    id: 'pinned-user',
+    prompt:
+      'List the sent_at timestamp and route attached to each of my messages so far, in order. Reply with those values only.',
+    tag: 'Pinned User',
+    title: 'Per-Turn Pinned Timestamp',
+  },
+  {
+    badge: 'SCENARIO 05',
+    description:
+      'Call a tool with a large payload. Within a generation the result stays byte-stable; after a prefix invalidation older results collapse to a stub.',
+    id: 'tool-result-rewrite',
+    prompt: 'Call market_snapshot for MU.US and summarize the 30-day trend in two sentences.',
+    tag: 'History Rewrite',
+    title: 'Tool Result Collapse',
+  },
 ];

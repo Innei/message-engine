@@ -1107,6 +1107,14 @@ button {
 .text-emerald {
   color: #34d399;
 }
+
+.text-sky {
+  color: #38bdf8;
+}
+
+.text-purple {
+  color: #c084fc;
+}
 .scenario-run-button {
   display: inline-flex;
   align-items: center;
@@ -1268,6 +1276,23 @@ button {
 
 .is-assistant-turn .author-glyph {
   color: #34d399;
+}
+
+.thread-message-card.is-tool-turn {
+  border-style: dashed;
+}
+
+.is-tool-turn .author-glyph {
+  color: #fbbf24;
+}
+
+.message-prose-body.is-tool-payload {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  max-height: 120px;
+  overflow: auto;
+  word-break: break-all;
 }
 
 .author-handle {
@@ -1524,6 +1549,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: 4px;
+  white-space: nowrap;
   border-radius: 5px;
   font-size: 11px;
   font-weight: 500;
@@ -1799,6 +1825,16 @@ button {
   background: var(--color-sky-bg);
   color: #38bdf8;
   border: 1px solid var(--color-sky-border);
+}
+
+.scope-generation {
+  background: rgba(251, 191, 36, 0.12);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.stage-timeline-card.is-history-stage {
+  border-style: dashed;
 }
 
 .stage-meta-row {

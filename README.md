@@ -124,12 +124,12 @@ const runtimeModule: MessageEngineModule<AppMessage, Initial, Step, Services> = 
   processors: [
     {
       id: 'runtime.market-state',
-      phase: 'user-augmentation',
+      phase: 'virtual-tail',
       cacheScope: 'turn',
       access: { reads: ['content'], writes: 'none' },
       process(context) {
         context.contribute({
-          slot: 'last-user',
+          slot: 'virtual-tail',
           content: {
             cacheScope: 'turn',
             id: 'market-state',
@@ -147,6 +147,24 @@ const runtimeModule: MessageEngineModule<AppMessage, Initial, Step, Services> = 
 > Session-cached processors are evaluated once and replay their attributed contributions on later turns. They must only call `contribute`. Structural mutation from a session-cached processor is rejected because it cannot be replayed safely.
 
 The abstract providers `BaseSystemPromptProvider`, `BaseFirstUserContentProvider`, `BaseLastUserContentProvider`, and `BaseVirtualTailProvider` cover the common contribution locations while retaining the full processor API for product-specific stages.
+
+Pinned user section: `BasePinnedUserProvider` or `contribute({ slot: 'pinned-user', content })`. The section binds to the user message current when it is first built and is replayed there on every later compile, never moved or rebuilt. With `cacheScope: 'session'` (default) that is once per engine instance. With `cacheScope: 'turn'` it is once per new user message, so each user message keeps the value it was compiled with; this is how to stamp the current time onto each user message without touching earlier ones. It is not written to `getMessages()`. If the target is already in the previous compiled prefix, the engine appends a compile-time user message instead of rewriting the committed user.
+
+Turn-scoped `last-user` may only augment a user message appended since the previous compile; otherwise `PipelineConfigurationError`. Use `virtual-tail` for per-turn data after a tool loop. This is a behavior change for hosts that ran a turn-scoped last-user provider inside a tool loop.
+
+Tool results: `createToolResultRewriteProcessor(rewrite)` in phase `history`. `rewrite` receives `{ index, message, toolCallId, ordinal, total }` (`ordinal` and `total` count tool results, so `total - ordinal - 1` is the distance from the newest one) and may return `undefined`, a replacement string (`adapter.replaceToolResultText`), or a message with the same `toolCallId`. Each `toolCallId` is rewritten at most once per generation; `invalidatePrefix()` starts a new generation. Not installed by default.
+
+| Intent                                              | Mechanism                                     |
+| --------------------------------------------------- | --------------------------------------------- |
+| Bind once per session, never move                   | `pinned-user` + `cacheScope: 'session'`       |
+| Bind once per user message, never move              | `pinned-user` + `cacheScope: 'turn'`          |
+| Follow the newest user message                      | `last-user` + `cacheScope: 'session'`         |
+| Latest every turn without touching old messages     | `virtual-tail`                                |
+| This turn's new user only                           | `last-user` + `cacheScope: 'turn'`            |
+| Replace the pinned baseline while the session lives | `invalidatePrefix()`                          |
+| End the instance                                    | `destroy()`                                   |
+| No tool-result rewriting                            | Do not install the rewrite processor          |
+| Custom tool-result / history edits                  | Custom `history` processor + `replaceMessage` |
 
 ## Prefix integrity and scan boundaries
 

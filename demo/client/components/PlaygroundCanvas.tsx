@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bot, Check, Copy, CornerDownLeft, Hash, Loader2, Sparkles, User } from 'lucide-react';
+import {
+  Bot,
+  Check,
+  Copy,
+  CornerDownLeft,
+  Hash,
+  Loader2,
+  Sparkles,
+  User,
+  Wrench,
+} from 'lucide-react';
 
 import type { PrefixMutationEvent, TurnTokenSnapshot } from '../../../src/index.js';
 import { EXPERIMENT_SCENARIOS } from '../scenarios.js';
@@ -136,20 +146,28 @@ export const PlaygroundCanvas = ({
           <div className="thread-stream-container">
             {messages.map((msg) => {
               const isUser = msg.role === 'user';
+              const isTool = msg.role === 'tool';
               const isCopied = copiedId === msg.id;
+              let turnClass = 'is-assistant-turn';
+              if (isUser) turnClass = 'is-user-turn';
+              if (isTool) turnClass = 'is-tool-turn';
+              let glyph = <Bot size={12} />;
+              if (isUser) glyph = <User size={12} />;
+              if (isTool) glyph = <Wrench size={12} />;
+              let handle = 'Assistant';
+              if (isUser) handle = 'User';
+              if (isTool) handle = 'Tool result';
 
               return (
-                <article
-                  className={`thread-message-card ${isUser ? 'is-user-turn' : 'is-assistant-turn'}`}
-                  key={msg.id}
-                >
+                <article className={`thread-message-card ${turnClass}`} key={msg.id}>
                   <div className="message-author-bar">
                     <div className="author-identity">
-                      <div className="author-glyph">
-                        {isUser ? <User size={12} /> : <Bot size={12} />}
-                      </div>
-                      <span className="author-handle">{isUser ? 'User' : 'Assistant'}</span>
-                      {!isUser && model ? (
+                      <div className="author-glyph">{glyph}</div>
+                      <span className="author-handle">{handle}</span>
+                      {isTool && msg.toolName ? (
+                        <span className="author-model-tag">{msg.toolName}</span>
+                      ) : null}
+                      {!isUser && !isTool && model ? (
                         <span className="author-model-tag">{model.name}</span>
                       ) : null}
                     </div>
@@ -169,7 +187,9 @@ export const PlaygroundCanvas = ({
                     </div>
                   </div>
 
-                  <div className="message-prose-body">{msg.text}</div>
+                  <div className={`message-prose-body ${isTool ? 'is-tool-payload' : ''}`}>
+                    {msg.text}
+                  </div>
                 </article>
               );
             })}

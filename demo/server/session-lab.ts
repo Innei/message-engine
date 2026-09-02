@@ -1,6 +1,12 @@
-import { Agent, type AgentEvent, type AgentMessage } from '@earendil-works/pi-agent-core';
+import {
+  Agent,
+  type AgentEvent,
+  type AgentMessage,
+  type AgentTool,
+} from '@earendil-works/pi-agent-core';
 import {
   createModels,
+  Type,
   type Api,
   type AssistantMessage,
   type Model,
@@ -11,12 +17,14 @@ import { countTokens } from 'gpt-tokenizer/encoding/o200k_base';
 
 import {
   BaseFirstUserContentProvider,
-  BaseLastUserContentProvider,
+  BasePinnedUserProvider,
   BaseSystemPromptProvider,
   BaseVirtualTailProvider,
+  createToolResultRewriteProcessor,
   PrefixMutationError,
   type MessageEngineModule,
   type MessagePipelineContext,
+  type MessagesEngineResult,
   type NormalizedUsage,
   type PrefixMutationEvent,
   type SessionTokenSummary,
@@ -98,11 +106,13 @@ export const toDemoMessageView = (message: AgentMessage, index: number): DemoMes
   if (role === 'toolResult') viewRole = 'tool';
 
   const stopReason = (message as { stopReason?: unknown }).stopReason;
+  const toolName = (message as { toolName?: unknown }).toolName;
   return {
     id: `message-${index}`,
     role: viewRole,
     ...(typeof stopReason === 'string' ? { stopReason } : {}),
     text: contentText(message),
+    ...(typeof toolName === 'string' ? { toolName } : {}),
   };
 };
 
@@ -133,8 +143,9 @@ const DEMO_CONTEXT_STAGES = [
   {
     cacheScope: 'turn',
     id: 'demo.request-context',
-    modelPosition: 'inside current user',
+    modelPosition: 'pinned to each user message',
     phase: 'user-augmentation',
+    pinned: true,
     sourceType: 'runtime-state',
   },
   {
@@ -229,7 +240,7 @@ class WorkspaceContextProvider extends BaseFirstUserContentProvider<
   }
 }
 
-class RequestContextProvider extends BaseLastUserContentProvider<
+class RequestContextProvider extends BasePinnedUserProvider<
   AgentMessage,
   DemoInitialContext,
   DemoStepContext,
@@ -237,6 +248,10 @@ class RequestContextProvider extends BaseLastUserContentProvider<
   DemoMetadata
 > {
   readonly id = 'demo.request-context';
+
+  constructor() {
+    super({ cacheScope: 'turn' });
+  }
 
   protected build(
     context: MessagePipelineContext<
@@ -254,11 +269,42 @@ class RequestContextProvider extends BaseLastUserContentProvider<
         '<request_context>',
         `route=${context.step.route}`,
         `selection=${context.step.selection}`,
+        `sent_at=${context.step.requestedAt}`,
         '</request_context>',
       ].join('\n'),
     );
   }
 }
+
+export const COLLAPSED_TOOL_RESULT_PREFIX = '[collapsed tool result]';
+
+const toolResultText = (message: AgentMessage): string => {
+  const content = (message as { content?: unknown }).content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .map((part) =>
+      typeof (part as { text?: unknown }).text === 'string' ? (part as { text: string }).text : '',
+    )
+    .join('');
+};
+
+export const isCollapsedToolResult = (message: AgentMessage): boolean =>
+  (message as { role?: string }).role === 'toolResult' &&
+  toolResultText(message).startsWith(COLLAPSED_TOOL_RESULT_PREFIX);
+
+const collapseOlderToolResults = createToolResultRewriteProcessor<
+  AgentMessage,
+  DemoInitialContext,
+  DemoStepContext,
+  DemoServices,
+  DemoMetadata
+>(({ message, ordinal, total }) => {
+  if (ordinal >= total - 1) return undefined;
+  const text = toolResultText(message);
+  const toolName = (message as { toolName?: string }).toolName ?? 'tool';
+  const symbol = /"symbol":"([^"]+)"/u.exec(text)?.[1] ?? 'unknown';
+  return `${COLLAPSED_TOOL_RESULT_PREFIX} ${toolName} for ${symbol}: ${text.length} chars superseded by a newer tool result; the model already answered from the full payload in an earlier turn.`;
+});
 
 class RuntimeTailProvider extends BaseVirtualTailProvider<
   AgentMessage,
@@ -306,8 +352,56 @@ export const createDemoContextModule = (): MessageEngineModule<
     new WorkspaceContextProvider(),
     new RequestContextProvider(),
     new RuntimeTailProvider(),
+    collapseOlderToolResults,
   ],
 });
+
+const CANDLE_COUNT = 30;
+
+const seededSeries = (seed: string, count: number): number[] => {
+  let state = 2166136261;
+  for (const char of seed) state = Math.imul(state ^ char.charCodeAt(0), 16777619) >>> 0;
+  const values: number[] = [];
+  let price = 60 + (state % 400) / 4;
+  for (let index = 0; index < count; index += 1) {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    price = Math.max(1, price * (1 + ((state % 2001) - 1000) / 25000));
+    values.push(Number(price.toFixed(2)));
+  }
+  return values;
+};
+
+export const marketSnapshotTool: AgentTool<ReturnType<typeof marketSnapshotParameters>> = {
+  description:
+    'Return the last 30 daily candles for a ticker as JSON. Deterministic synthetic data for the lab.',
+  execute: async (_toolCallId, params) => {
+    const symbol = params.symbol.trim().toUpperCase();
+    const closes = seededSeries(symbol, CANDLE_COUNT);
+    const candles = closes.map((close, index) => {
+      const open = closes[index - 1] ?? close;
+      const day = new Date(Date.UTC(2026, 7, 1 + index)).toISOString().slice(0, 10);
+      return {
+        close,
+        date: day,
+        high: Number(Math.max(open, close) * 1.012).toFixed(2),
+        low: Number(Math.min(open, close) * 0.988).toFixed(2),
+        open,
+        volume: 900_000 + ((index * 7919) % 400_000),
+      };
+    });
+    const text = JSON.stringify({ candles, interval: '1d', source: 'lab-synthetic', symbol });
+    return { content: [{ text, type: 'text' }], details: { symbol } };
+  },
+  label: 'Market Snapshot',
+  name: 'market_snapshot',
+  parameters: marketSnapshotParameters(),
+};
+
+function marketSnapshotParameters() {
+  return Type.Object({
+    symbol: Type.String({ description: 'Ticker symbol, for example MU.US' }),
+  });
+}
 
 const replaceFirstUserContent = (messages: AgentMessage[], replacement: string): AgentMessage[] => {
   const index = messages.findIndex((message) => (message as { role?: string }).role === 'user');
@@ -385,6 +479,7 @@ export class DemoAgentSession {
   private readonly agent: Agent;
   private readonly engine;
   private lastPrefixEvent: PrefixMutationEvent | undefined;
+  private latestCompiled: MessagesEngineResult<AgentMessage, DemoMetadata> | undefined;
   private latestSnapshot: TurnTokenSnapshot | undefined;
   private providerTurn = 0;
   private readonly sessionContext: DemoSessionContextInput;
@@ -479,7 +574,7 @@ export class DemoAgentSession {
         messages: [],
         model,
         systemPrompt: SYSTEM_PROMPT,
-        tools: [],
+        tools: [marketSnapshotTool],
       },
       onPayload: (payload) => this.promptCacheBridge.apply(payload),
       sessionId: this.sessionId,
@@ -490,6 +585,7 @@ export class DemoAgentSession {
         }),
       transformContext: this.engine.createTransformContext({
         onCompiled: (result) => {
+          this.latestCompiled = result;
           this.systemPromptBridge.capture(result);
           this.promptCacheBridge.capture(result);
         },
@@ -548,6 +644,18 @@ export class DemoAgentSession {
       sessionId: this.sessionId,
       strict: this.strict,
       ...(summary ? { summary } : {}),
+      toolResults: this.toolResultStats(),
+    };
+  }
+
+  private toolResultStats(): DemoSessionState['toolResults'] {
+    const compiled = this.latestCompiled?.messages ?? [];
+    const results = compiled.filter(
+      (message) => (message as { role?: string }).role === 'toolResult',
+    );
+    return {
+      collapsed: results.filter(isCollapsedToolResult).length,
+      total: results.length,
     };
   }
 
@@ -701,6 +809,7 @@ export class DemoAgentSession {
         id: stage.id,
         modelPosition: stage.modelPosition,
         phase: stage.phase,
+        ...('pinned' in stage ? { pinCount: segments.length } : {}),
         replayed:
           stage.cacheScope === 'session' && this.providerTurn > 0 && buildCount < this.providerTurn,
         sourceType: stage.sourceType,
