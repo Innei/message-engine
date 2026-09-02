@@ -148,21 +148,23 @@ const runtimeModule: MessageEngineModule<AppMessage, Initial, Step, Services> = 
 
 The abstract providers `BaseSystemPromptProvider`, `BaseFirstUserContentProvider`, `BaseLastUserContentProvider`, and `BaseVirtualTailProvider` cover the common contribution locations while retaining the full processor API for product-specific stages.
 
-Pinned last-user (opt-in): `super({ pin: true })` or `contribute({ slot: 'last-user', pin: true, content })`. The section binds to the first successful target for the engine instance and is replayed there on later compiles. It is not written to `getMessages()`. If that first target is already in the previous compiled prefix, the engine appends a compile-time user message instead of rewriting the committed user. `pin` requires `cacheScope: 'session'`. Omit `pin` to keep current last-user rebinding.
+Pinned user section: `BasePinnedUserProvider` or `contribute({ slot: 'pinned-user', content })`. The section binds to the user message current when it is first built and is replayed there on every later compile, never moved or rebuilt. With `cacheScope: 'session'` (default) that is once per engine instance. With `cacheScope: 'turn'` it is once per new user message, so each user message keeps the value it was compiled with; this is how to stamp the current time onto each user message without touching earlier ones. It is not written to `getMessages()`. If the target is already in the previous compiled prefix, the engine appends a compile-time user message instead of rewriting the committed user.
 
-Turn-scoped last-user may only augment a user message appended since the previous compile; otherwise `PipelineConfigurationError`. Use `virtual-tail` for per-turn data after a tool loop.
+Turn-scoped `last-user` may only augment a user message appended since the previous compile; otherwise `PipelineConfigurationError`. Use `virtual-tail` for per-turn data after a tool loop. This is a behavior change for hosts that ran a turn-scoped last-user provider inside a tool loop.
 
-Tool results: `createToolResultRewriteProcessor(rewrite)` in phase `history`. `rewrite` may return `undefined`, a replacement string (`adapter.replaceToolResultText`), or a message with the same `toolCallId`. Each `toolCallId` is rewritten at most once per generation; `invalidatePrefix()` starts a new generation. Not installed by default.
+Tool results: `createToolResultRewriteProcessor(rewrite)` in phase `history`. `rewrite` receives `{ index, message, toolCallId, ordinal, total }` (`ordinal` and `total` count tool results, so `total - ordinal - 1` is the distance from the newest one) and may return `undefined`, a replacement string (`adapter.replaceToolResultText`), or a message with the same `toolCallId`. Each `toolCallId` is rewritten at most once per generation; `invalidatePrefix()` starts a new generation. Not installed by default.
 
-| Intent                                              | Mechanism                                                           |
-| --------------------------------------------------- | ------------------------------------------------------------------- |
-| Do not pin                                          | Omit `pin`; last-user still rebinds to the current `index.lastUser` |
-| Latest every turn without touching old messages     | `virtual-tail`                                                      |
-| This turn's new user only                           | `last-user` + `cacheScope: 'turn'`                                  |
-| Replace the pinned baseline while the session lives | `invalidatePrefix()`                                                |
-| End the instance                                    | `destroy()`                                                         |
-| No tool-result rewriting                            | Do not install the rewrite processor                                |
-| Custom tool-result / history edits                  | Custom `history` processor + `replaceMessage`                       |
+| Intent                                              | Mechanism                                     |
+| --------------------------------------------------- | --------------------------------------------- |
+| Bind once per session, never move                   | `pinned-user` + `cacheScope: 'session'`       |
+| Bind once per user message, never move              | `pinned-user` + `cacheScope: 'turn'`          |
+| Follow the newest user message                      | `last-user` + `cacheScope: 'session'`         |
+| Latest every turn without touching old messages     | `virtual-tail`                                |
+| This turn's new user only                           | `last-user` + `cacheScope: 'turn'`            |
+| Replace the pinned baseline while the session lives | `invalidatePrefix()`                          |
+| End the instance                                    | `destroy()`                                   |
+| No tool-result rewriting                            | Do not install the rewrite processor          |
+| Custom tool-result / history edits                  | Custom `history` processor + `replaceMessage` |
 
 ## Prefix integrity and scan boundaries
 

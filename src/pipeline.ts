@@ -1,6 +1,10 @@
 import { PipelineConfigurationError, PipelineProcessorError } from './errors.js';
 import { fingerprint } from './fingerprint.js';
-import { applyLastUserContributions, type LastUserPin } from './last-user-pin.js';
+import {
+  applyLastUserContributions,
+  applyPinnedUserContributions,
+  type LastUserPin,
+} from './last-user-pin.js';
 import type { MessageAdapter } from './message-adapter.js';
 import { MessageIndex } from './message-index.js';
 import type {
@@ -27,7 +31,7 @@ interface PlannedProcessor<
   registrationIndex: number;
 }
 
-interface StoredContribution extends ContextContribution {
+export interface StoredContribution extends ContextContribution {
   processorCacheScope: 'session' | 'turn';
   sequence: number;
 }
@@ -40,7 +44,8 @@ const contributionSlotsByPhase: Partial<
   Record<PipelinePhase, readonly ContextContribution['slot'][]>
 > = {
   'stable-context': ['stable-prefix'],
-  'user-augmentation': ['last-user'],
+  // last-user runs first so its committed-user guard throws before any pin is recorded
+  'user-augmentation': ['last-user', 'pinned-user'],
   'virtual-tail': ['virtual-tail'],
   system: ['system'],
 };
@@ -219,7 +224,6 @@ export class PipelineExecutionContext<
     initialIndex?: MessageIndexSnapshot,
     committedRawCount = 0,
     private readonly lastUserPins: Map<string, LastUserPin> = new Map(),
-    readonly generation = 0,
     readonly toolResultPins: Map<string, Message> = new Map(),
   ) {
     this.messageList = [...rawMessages];
@@ -275,9 +279,6 @@ export class PipelineExecutionContext<
   }
 
   contribute(contribution: ContextContributionInput): void {
-    if (contribution.pin && contribution.slot !== 'last-user') {
-      throw new PipelineConfigurationError('pin: true is only valid for slot "last-user"');
-    }
     this.contributionList.push({
       ...contribution,
       content: {
@@ -320,9 +321,7 @@ export class PipelineExecutionContext<
       throw new PipelineConfigurationError('replaceToolResultText is not implemented by adapter');
     }
     const current = this.messageList[index];
-    if (index < 0 || index >= this.messageList.length || current === undefined) {
-      throw new RangeError(`Message index ${index} is out of bounds`);
-    }
+    if (current === undefined) throw new RangeError(`Message index ${index} is out of bounds`);
     this.replaceMessage(index, replace(current, text));
   }
 
@@ -344,14 +343,17 @@ export class PipelineExecutionContext<
   applyContributionsForPhase(phase: PipelinePhase): void {
     const slots = contributionSlotsByPhase[phase];
     if (!slots) return;
-
-    for (const slot of slots) this.applySlot(slot);
+    this.applySlots(slots);
   }
 
   applyRemainingContributions(): void {
-    for (const slot of ['system', 'stable-prefix', 'last-user', 'virtual-tail'] as const) {
-      this.applySlot(slot);
-    }
+    this.applySlots(['system', 'stable-prefix', 'last-user', 'pinned-user', 'virtual-tail']);
+  }
+
+  private applySlots(slots: readonly ContextContribution['slot'][]): void {
+    const lastUser = this.index.lastUser;
+    const hostLastUserId = lastUser === null ? undefined : this.messageIds[lastUser];
+    for (const slot of slots) this.applySlot(slot, hostLastUserId);
   }
 
   contributionCount(): number {
@@ -380,7 +382,7 @@ export class PipelineExecutionContext<
     return [...this.messageList];
   }
 
-  private applySlot(slot: ContextContribution['slot']): void {
+  private applySlot(slot: ContextContribution['slot'], hostLastUserId: string | undefined): void {
     const selected = this.contributionList
       .filter((entry) => entry.slot === slot)
       .sort(
@@ -415,16 +417,26 @@ export class PipelineExecutionContext<
         this.messageIds.splice(firstUser, 0, `injected:stable-prefix:${fingerprint(content)}`);
         this.indexDirty = true;
       }
-    } else if (slot === 'last-user') {
-      const result = applyLastUserContributions({
+    } else if (slot === 'pinned-user') {
+      const result = applyPinnedUserContributions({
         adapter: this.adapter,
         committedRawIds: this.committedRawIds,
         contributions: selected,
+        hostLastUserId,
         lastUserPins: this.lastUserPins,
         messageIds: this.messageIds,
         messageList: this.messageList,
       });
       if (result.indexDirty) this.indexDirty = true;
+    } else if (slot === 'last-user') {
+      applyLastUserContributions({
+        adapter: this.adapter,
+        committedRawIds: this.committedRawIds,
+        contributions: selected,
+        hostLastUserId,
+        messageIds: this.messageIds,
+        messageList: this.messageList,
+      });
     } else {
       this.messageList.push(
         this.adapter.createUserMessage(content, undefined, { cacheScope, slot: 'virtual-tail' }),
@@ -515,18 +527,13 @@ export const executePipeline = async <
       throw new PipelineProcessorError(processor.id, error);
     }
 
-    const produced = context.contributionsSince(contributionStart);
-    if (processor.cacheScope !== 'session' && produced.some((item) => item.pin === true)) {
-      throw new PipelineConfigurationError('pin: true requires cacheScope "session"');
-    }
-
     if (processor.cacheScope === 'session') {
       if (context.currentMutationRevision() !== mutationStart) {
         throw new PipelineConfigurationError(
           `Session-cached processor ${processor.id} must only emit contributions`,
         );
       }
-      sessionContributionCache.set(processor.id, produced);
+      sessionContributionCache.set(processor.id, context.contributionsSince(contributionStart));
     }
 
     stats.push({

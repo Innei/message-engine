@@ -40,12 +40,14 @@
 ### Task 1: Contribution `pin` flag and provider wiring
 
 **Files:**
+
 - Modify: `src/types.ts`
 - Modify: `src/providers.ts`
 - Modify: `src/pipeline.ts` (`StoredContribution` already extends `ContextContribution`; `contribute` must copy `pin`)
 - Create: `test/pinned-last-user.test.ts`
 
 **Interfaces:**
+
 - Consumes: existing `ContextContributionInput`, `BaseLastUserContentProvider`, `PipelineConfigurationError`
 - Produces: `pin?: boolean` on `ContextContribution`, `ContextContributionInput`, and `ContextProviderOptions`; `BaseLastUserContentProvider` sets `readonly pin` and defaults `cacheScope` to `'session'` when `pin` is true
 
@@ -247,6 +249,7 @@ git commit -m "feat: add opt-in pin flag for last-user contributions"
 ### Task 2: Pin bind-once apply and turn last-user committed guard
 
 **Files:**
+
 - Create: `src/last-user-pin.ts`
 - Modify: `src/pipeline.ts`
 - Modify: `src/session-engine.ts`
@@ -254,6 +257,7 @@ git commit -m "feat: add opt-in pin flag for last-user contributions"
 - Modify: `test/pinned-last-user.test.ts`
 
 **Interfaces:**
+
 - Consumes: `pin` on contributions from Task 1; `lastCompiledMessageCount` on the engine (already exists, starts at `0`)
 - Produces: `LastUserPin` and `lastUserPinKey`; `PipelineExecutionContext` constructed with `committedRawCount` and `lastUserPins: Map<string, LastUserPin>`; engine owns that map
 
@@ -435,10 +439,12 @@ git commit -m "feat: bind pinned last-user sections to the first target message"
 ### Task 3: Carrier message when first pin would rewrite a committed user
 
 **Files:**
+
 - Modify: `src/last-user-pin.ts` (carrier branch already sketched in Task 2; lock tests)
 - Modify: `test/pinned-last-user.test.ts`
 
 **Interfaces:**
+
 - Consumes: `LastUserPin` `{ kind: 'carrier'; insertAt: number; text: string }`
 - Produces: same; replay inserts at stored `insertAt` in increasing `insertAt` order before applying `kind: 'message'` pins
 
@@ -482,11 +488,7 @@ it('appends a compile-time carrier when the first pin would rewrite a committed 
   });
   withPin.append([message('ask'), message('answer', 'assistant')]);
   const compiled = await withPin.compileTurn({ step: { turn: 2 } });
-  expect(compiled.messages.map((item) => item.content)).toEqual([
-    'ask',
-    'answer',
-    'late section',
-  ]);
+  expect(compiled.messages.map((item) => item.content)).toEqual(['ask', 'answer', 'late section']);
   expect(withPin.getMessages().map((item) => item.content)).toEqual(['ask', 'answer']);
 
   withPin.append([message('next')]);
@@ -566,10 +568,12 @@ git commit -m "feat: append a pinned last-user carrier when the last user is com
 ### Task 4: Clear pins on accepted invalidation and destroy
 
 **Files:**
+
 - Modify: `src/session-engine.ts` (`handlePrefixMutation`, `executeDestroy`)
 - Modify: `test/pinned-last-user.test.ts`
 
 **Interfaces:**
+
 - Consumes: `lastUserPins` from Task 2
 - Produces: `lastUserPins.clear()` next to `sessionContributionCache.clear()` in non-strict `handlePrefixMutation` and `executeDestroy` only
 
@@ -671,6 +675,7 @@ git commit -m "fix: clear last-user pins on prefix invalidation and destroy"
 ### Task 5: Tool-result rewrite processor
 
 **Files:**
+
 - Modify: `src/message-adapter.ts` — `replaceToolResultText?(message: Message, text: string): Message`
 - Modify: `src/types.ts` — `generation: number` on `MessagePipelineContext`; `replaceToolResultText(index: number, text: string): void`
 - Modify: `src/pipeline.ts` — implement those on `PipelineExecutionContext`
@@ -680,6 +685,7 @@ git commit -m "fix: clear last-user pins on prefix invalidation and destroy"
 - Create: `test/tool-result-rewrite.test.ts`
 
 **Interfaces:**
+
 - Consumes: `MessageAdapter.getToolResultId`; new `replaceToolResultText`
 - Produces:
 
@@ -794,9 +800,7 @@ describe('tool result rewrite', () => {
         {
           id: 'history',
           processors: [
-            createToolResultRewriteProcessor<TestMessage>(() =>
-              toolResult('other', 'nope'),
-            ),
+            createToolResultRewriteProcessor<TestMessage>(() => toolResult('other', 'nope')),
           ],
         },
       ],
@@ -924,10 +928,12 @@ git commit -m "feat: add once-per-generation tool result rewrite processor"
 ### Task 6: Pi adapter `replaceToolResultText`
 
 **Files:**
+
 - Modify: `src/adapters/pi.ts`
 - Modify: `test/pi-adapter.test.ts`
 
 **Interfaces:**
+
 - Consumes: `MessageAdapter.replaceToolResultText` from Task 5
 - Produces: `piMessageAdapter.replaceToolResultText`
 
@@ -1004,9 +1010,11 @@ git commit -m "feat: replace Pi toolResult text through the message adapter"
 ### Task 7: README
 
 **Files:**
+
 - Modify: `README.md` (Pipeline model + Prefix integrity sections)
 
 **Interfaces:**
+
 - Consumes: public API from Tasks 1–6
 - Produces: documentation only
 
@@ -1039,22 +1047,22 @@ git commit -m "docs: document pinned last-user sections and tool result rewrites
 
 **Spec coverage**
 
-| Spec item | Task |
-| --- | --- |
-| `pin?: boolean` opt-in on contribute / last-user provider | 1 |
-| `pin` + `turn` configuration error | 1 |
-| `pin` on non-last-user slot error | 1 |
-| Bind to first target; no rebind; `build()` once | 2 |
-| Unpinned last-user still rebinds | 2 |
-| Turn last-user cannot write committed user | 2 |
-| Compile-only; raw / `getMessages()` clean | 2 |
-| Carrier when last user already compiled | 3 |
-| `invalidatePrefix` / destroy clear pins; strict throw does not | 4 |
-| `rewriteToolResult` once per generation; string / Message / undefined | 5 |
-| Same `toolCallId` required; missing adapter method errors | 5 |
-| Pi `replaceToolResultText` | 6 |
-| README + escape table | 7 |
-| No diffs, no default stubs, no extra hooks | honored (not in plan) |
+| Spec item                                                             | Task                  |
+| --------------------------------------------------------------------- | --------------------- |
+| `pin?: boolean` opt-in on contribute / last-user provider             | 1                     |
+| `pin` + `turn` configuration error                                    | 1                     |
+| `pin` on non-last-user slot error                                     | 1                     |
+| Bind to first target; no rebind; `build()` once                       | 2                     |
+| Unpinned last-user still rebinds                                      | 2                     |
+| Turn last-user cannot write committed user                            | 2                     |
+| Compile-only; raw / `getMessages()` clean                             | 2                     |
+| Carrier when last user already compiled                               | 3                     |
+| `invalidatePrefix` / destroy clear pins; strict throw does not        | 4                     |
+| `rewriteToolResult` once per generation; string / Message / undefined | 5                     |
+| Same `toolCallId` required; missing adapter method errors             | 5                     |
+| Pi `replaceToolResultText`                                            | 6                     |
+| README + escape table                                                 | 7                     |
+| No diffs, no default stubs, no extra hooks                            | honored (not in plan) |
 
 **Placeholders:** none.
 

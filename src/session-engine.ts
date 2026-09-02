@@ -298,9 +298,7 @@ export class SessionMessagesEngine<
     this.rawTokenSegments.length = 0;
     this.inputReferences.length = 0;
     this.index.clear();
-    this.sessionContributionCache.clear();
-    this.lastUserPins.clear();
-    this.toolResultPins.clear();
+    this.clearGenerationCaches();
 
     if (errors.length > 0) throw new AggregateError(errors, 'Message engine teardown failed');
     return summary;
@@ -477,7 +475,6 @@ export class SessionMessagesEngine<
       this.index.snapshot(),
       this.lastCompiledMessageCount,
       this.lastUserPins,
-      this.generationValue,
       this.toolResultPins,
     );
     const processorStats = await executePipeline({
@@ -570,6 +567,10 @@ export class SessionMessagesEngine<
     this.generationValue += 1;
     this.lastCompiledGeneration = -1;
     this.lastCompiledMessageCount = 0;
+    this.clearGenerationCaches();
+  }
+
+  private clearGenerationCaches(): void {
     this.sessionContributionCache.clear();
     this.lastUserPins.clear();
     this.toolResultPins.clear();

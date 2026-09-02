@@ -2,6 +2,7 @@
 
 Date: 2026-08-20
 Status: approved for spec
+Implementation note (2026-09-02): shipped as a dedicated `pinned-user` slot / `BasePinnedUserProvider` instead of a `pin: true` flag on `last-user`; the rewrite callback also receives `ordinal` and `total`; the tool-result pin table is engine-internal, not on the processor context.
 Scope: `@innei/message-engine` library only. No host-product integration in this change.
 
 ## Motivation
@@ -102,9 +103,9 @@ Pinned content uses `cacheScope: 'session'` once landed. The carrier message, if
 ```ts
 interface MessageAdapter<Message> {
   // existing
-  getToolResultId?(message: Message): string | undefined
+  getToolResultId?(message: Message): string | undefined;
   // new, required only if rewrite is used
-  replaceToolResultText?(message: Message, text: string): Message
+  replaceToolResultText?(message: Message, text: string): Message;
 }
 ```
 
@@ -136,15 +137,15 @@ No `onBefore` / `onAfter` hooks. Hosts that need more than the callback write th
 
 ## 3. Escapes
 
-| Intent | Mechanism |
-| --- | --- |
-| Do not pin | Omit `pin`. last-user still rebinds to current `index.lastUser` |
-| Latest every turn, do not touch old messages | `virtual-tail` |
-| This turn's new user only | `last-user` + `cacheScope: 'turn'` |
-| Replace the pinned baseline while the session lives | `invalidatePrefix()` |
-| End the instance | `destroy()` |
-| No tool-result rewriting | Do not install the processor |
-| Custom tool-result / history edits | Own `history` processor |
+| Intent                                              | Mechanism                                                       |
+| --------------------------------------------------- | --------------------------------------------------------------- |
+| Do not pin                                          | Omit `pin`. last-user still rebinds to current `index.lastUser` |
+| Latest every turn, do not touch old messages        | `virtual-tail`                                                  |
+| This turn's new user only                           | `last-user` + `cacheScope: 'turn'`                              |
+| Replace the pinned baseline while the session lives | `invalidatePrefix()`                                            |
+| End the instance                                    | `destroy()`                                                     |
+| No tool-result rewriting                            | Do not install the processor                                    |
+| Custom tool-result / history edits                  | Own `history` processor                                         |
 
 `replaceMessage` / `replaceMessages` remain for `history` / `sanitize`. They do not update the pin table. Invalidating a pin still goes through `invalidatePrefix()`.
 

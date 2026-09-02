@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { applyLastUserContributions, lastUserPinKey } from '../src/last-user-pin.js';
+import { applyPinnedUserContributions, lastUserPinKey } from '../src/last-user-pin.js';
 import {
   BaseFirstUserContentProvider,
   BaseLastUserContentProvider,
+  BasePinnedUserProvider,
   PipelineConfigurationError,
   PrefixMutationError,
   SessionMessagesEngine,
@@ -71,63 +72,9 @@ const createEngine = (
   });
 
 describe('pinned last-user contributions', () => {
-  it('rejects pin with turn cacheScope on the last-user provider', () => {
-    expect(
-      () =>
-        new (class extends BaseLastUserContentProvider<
-          TestMessage,
-          { agent: string },
-          { turn: number },
-          Record<string, never>,
-          { visited?: boolean }
-        > {
-          readonly id = 'pinned.section';
-          constructor() {
-            super({ cacheScope: 'turn', pin: true });
-          }
-          protected build() {
-            return 'section';
-          }
-        })(),
-    ).toThrow(PipelineConfigurationError);
-  });
-
-  it('rejects pin contributions on a non-last-user slot', async () => {
-    const engine = createEngine({
-      modules: [
-        {
-          id: 'bad',
-          processors: [
-            {
-              id: 'bad.tail',
-              phase: 'virtual-tail',
-              cacheScope: 'session',
-              process(context) {
-                context.contribute({
-                  pin: true,
-                  slot: 'virtual-tail',
-                  content: {
-                    cacheScope: 'session',
-                    id: 'x',
-                    sourceType: 'knowledge',
-                    text: 'nope',
-                  },
-                });
-              },
-            },
-          ],
-        },
-      ],
-    });
-    engine.append([message('hello')]);
-    await expect(engine.compileTurn({ step: { turn: 1 } })).rejects.toBeInstanceOf(
-      PipelineConfigurationError,
-    );
-  });
-
   it('pins a session last-user section on the first user and does not rebind', async () => {
     let builds = 0;
-    class PinnedSection extends BaseLastUserContentProvider<
+    class PinnedSection extends BasePinnedUserProvider<
       TestMessage,
       { agent: string },
       { turn: number },
@@ -136,7 +83,7 @@ describe('pinned last-user contributions', () => {
     > {
       readonly id = 'pinned.section';
       constructor() {
-        super({ pin: true, sourceType: 'knowledge' });
+        super({ sourceType: 'knowledge' });
       }
       protected build() {
         builds += 1;
@@ -292,7 +239,7 @@ describe('pinned last-user contributions', () => {
   });
 
   it('appends a compile-time carrier when the first pin would rewrite a committed user', async () => {
-    class LatePin extends BaseLastUserContentProvider<
+    class LatePin extends BasePinnedUserProvider<
       TestMessage,
       { agent: string },
       { turn: number },
@@ -301,7 +248,7 @@ describe('pinned last-user contributions', () => {
     > {
       readonly id = 'late.pin';
       constructor() {
-        super({ pin: true, sourceType: 'knowledge' });
+        super({ sourceType: 'knowledge' });
       }
       enabled(
         context: MessagePipelineContext<
@@ -344,7 +291,7 @@ describe('pinned last-user contributions', () => {
   });
 
   it('replays carrier pins by increasing insertAt, not contribution visit order', async () => {
-    class FirstCarrier extends BaseLastUserContentProvider<
+    class FirstCarrier extends BasePinnedUserProvider<
       TestMessage,
       { agent: string },
       { turn: number },
@@ -353,7 +300,7 @@ describe('pinned last-user contributions', () => {
     > {
       readonly id = 'first.carrier';
       constructor() {
-        super({ pin: true, sourceType: 'knowledge' });
+        super({ sourceType: 'knowledge' });
       }
       enabled(
         context: MessagePipelineContext<
@@ -370,7 +317,7 @@ describe('pinned last-user contributions', () => {
         return 'first carrier';
       }
     }
-    class SecondCarrier extends BaseLastUserContentProvider<
+    class SecondCarrier extends BasePinnedUserProvider<
       TestMessage,
       { agent: string },
       { turn: number },
@@ -379,7 +326,7 @@ describe('pinned last-user contributions', () => {
     > {
       readonly id = 'second.carrier';
       constructor() {
-        super({ pin: true, sourceType: 'knowledge' });
+        super({ sourceType: 'knowledge' });
       }
       enabled(
         context: MessagePipelineContext<
@@ -438,16 +385,17 @@ describe('pinned last-user contributions', () => {
       ],
     ]);
 
-    applyLastUserContributions({
+    applyPinnedUserContributions({
       adapter,
       committedRawIds: new Set(['raw:ask', 'raw:answer']),
+      hostLastUserId: 'raw:next',
       lastUserPins,
       messageIds,
       messageList,
       contributions: [
         {
-          pin: true,
-          slot: 'last-user',
+          processorCacheScope: 'session',
+          slot: 'pinned-user',
           order: 0,
           sequence: 0,
           content: {
@@ -460,8 +408,8 @@ describe('pinned last-user contributions', () => {
           },
         },
         {
-          pin: true,
-          slot: 'last-user',
+          processorCacheScope: 'session',
+          slot: 'pinned-user',
           order: 1,
           sequence: 1,
           content: {
@@ -486,7 +434,7 @@ describe('pinned last-user contributions', () => {
   });
 
   it('applies unpinned session last-user to the host last user after a carrier replay', async () => {
-    class LatePin extends BaseLastUserContentProvider<
+    class LatePin extends BasePinnedUserProvider<
       TestMessage,
       { agent: string },
       { turn: number },
@@ -495,7 +443,7 @@ describe('pinned last-user contributions', () => {
     > {
       readonly id = 'late.pin';
       constructor() {
-        super({ pin: true, sourceType: 'knowledge' });
+        super({ sourceType: 'knowledge' });
       }
       enabled(
         context: MessagePipelineContext<
@@ -545,7 +493,7 @@ describe('pinned last-user contributions', () => {
   });
 
   it('does not record a pin from a compile that throws on turn last-user', async () => {
-    class LatePin extends BaseLastUserContentProvider<
+    class LatePin extends BasePinnedUserProvider<
       TestMessage,
       { agent: string },
       { turn: number },
@@ -554,7 +502,7 @@ describe('pinned last-user contributions', () => {
     > {
       readonly id = 'late.pin';
       constructor() {
-        super({ pin: true, sourceType: 'knowledge' });
+        super({ sourceType: 'knowledge' });
       }
       enabled(
         context: MessagePipelineContext<
@@ -612,9 +560,59 @@ describe('pinned last-user contributions', () => {
     ]);
   });
 
+  it('pins a turn-scoped section once per user message and keeps earlier ones', async () => {
+    let clock = 0;
+    class TurnStamp extends BasePinnedUserProvider<
+      TestMessage,
+      { agent: string },
+      { turn: number },
+      Record<string, never>,
+      { visited?: boolean }
+    > {
+      readonly id = 'turn.stamp';
+      constructor() {
+        super({ cacheScope: 'turn' });
+      }
+      protected build() {
+        clock += 1;
+        return `t${clock}`;
+      }
+    }
+    const engine = createEngine({
+      modules: [{ id: 'stamp', processors: [new TurnStamp()] }],
+    });
+    engine.append([message('ask')]);
+    const first = await engine.compileTurn({ step: { turn: 1 } });
+    expect(first.messages.map((item) => item.content)).toEqual(['ask\n\nt1']);
+
+    engine.append([
+      message('call', 'assistant'),
+      { ...message('result', 'toolResult'), toolCallId: 'c1' },
+    ]);
+    const loop = await engine.compileTurn({ step: { turn: 1 } });
+    expect(loop.messages.map((item) => item.content)).toEqual(['ask\n\nt1', 'call', 'result']);
+
+    engine.append([message('answer', 'assistant'), message('follow up')]);
+    const second = await engine.compileTurn({ step: { turn: 2 } });
+    expect(second.messages.map((item) => item.content)).toEqual([
+      'ask\n\nt1',
+      'call',
+      'result',
+      'answer',
+      'follow up\n\nt3',
+    ]);
+    expect(engine.getMessages().map((item) => item.content)).toEqual([
+      'ask',
+      'call',
+      'result',
+      'answer',
+      'follow up',
+    ]);
+  });
+
   it('rebuilds a pin after invalidatePrefix', async () => {
     let builds = 0;
-    class PinnedSection extends BaseLastUserContentProvider<
+    class PinnedSection extends BasePinnedUserProvider<
       TestMessage,
       { agent: string },
       { turn: number },
@@ -623,7 +621,7 @@ describe('pinned last-user contributions', () => {
     > {
       readonly id = 'pinned.section';
       constructor() {
-        super({ pin: true, sourceType: 'knowledge' });
+        super({ sourceType: 'knowledge' });
       }
       protected build() {
         builds += 1;
@@ -643,7 +641,7 @@ describe('pinned last-user contributions', () => {
   });
 
   it('does not clear pins when strict mode blocks a transcript mutation', async () => {
-    class PinnedSection extends BaseLastUserContentProvider<
+    class PinnedSection extends BasePinnedUserProvider<
       TestMessage,
       { agent: string },
       { turn: number },
@@ -652,7 +650,7 @@ describe('pinned last-user contributions', () => {
     > {
       readonly id = 'pinned.section';
       constructor() {
-        super({ pin: true, sourceType: 'knowledge' });
+        super({ sourceType: 'knowledge' });
       }
       protected build() {
         return 'workspace snapshot';

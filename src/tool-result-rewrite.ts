@@ -1,9 +1,13 @@
+import { PipelineConfigurationError } from './errors.js';
+import { PipelineExecutionContext } from './pipeline.js';
 import type { MessageProcessor } from './types.js';
 
 export interface ToolResultRewriteInput<Message> {
   index: number;
   message: Message;
+  ordinal: number;
   toolCallId: string;
+  total: number;
 }
 
 export type ToolResultRewrite<Message> = (
@@ -23,29 +27,35 @@ export const createToolResultRewriteProcessor = <
   phase: 'history',
   access: { reads: ['content', 'ids'], writes: 'content' },
   process(context) {
+    if (!(context instanceof PipelineExecutionContext)) {
+      throw new PipelineConfigurationError(
+        'tool result rewrite requires the engine pipeline context',
+      );
+    }
     const pinned = context.toolResultPins;
-    for (let index = 0; index < context.messages.length; index += 1) {
-      const message = context.messages[index];
-      if (message === undefined) continue;
+    const targets: Array<{ index: number; message: Message; toolCallId: string }> = [];
+    context.messages.forEach((message, index) => {
       const toolCallId = context.getToolResultId(message);
-      if (!toolCallId) continue;
-      if (pinned.has(toolCallId)) {
-        const existing = pinned.get(toolCallId);
-        if (existing !== undefined) context.replaceMessage(index, existing);
-        continue;
+      if (toolCallId) targets.push({ index, message, toolCallId });
+    });
+
+    targets.forEach(({ index, message, toolCallId }, ordinal) => {
+      const existing = pinned.get(toolCallId);
+      if (existing !== undefined) {
+        if (existing !== message) context.replaceMessage(index, existing);
+        return;
       }
-      const result = rewrite({ index, message, toolCallId });
+      const result = rewrite({ index, message, ordinal, toolCallId, total: targets.length });
       if (typeof result === 'string') {
         context.replaceToolResultText(index, result);
       } else if (result !== undefined) {
-        const nextId = context.getToolResultId(result);
-        if (nextId !== toolCallId) {
+        if (context.getToolResultId(result) !== toolCallId) {
           throw new Error(`tool result rewrite changed toolCallId ${toolCallId}`);
         }
         context.replaceMessage(index, result);
       }
       const applied = context.messages[index];
       if (applied !== undefined) pinned.set(toolCallId, applied);
-    }
+    });
   },
 });
