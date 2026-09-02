@@ -12,6 +12,7 @@ import {
 
 import type { PrefixMutationEvent, TurnTokenSnapshot } from '../../../src/index.js';
 import { formatCost, formatInteger, formatPercent, summarizeContextValue } from '../formatters.js';
+import { Wrench } from 'lucide-react';
 import type { DemoContextStageState, DemoSessionState } from '../../shared/protocol.js';
 import { TokenSunburst } from '../TokenSunburst.js';
 import type { InspectorTab, TraceEntry } from '../types.js';
@@ -100,15 +101,40 @@ const MetricsTab = ({
   );
 };
 
-const StagesTab = ({ stages }: { stages: DemoContextStageState[] }) => (
+const StagesTab = ({
+  stages,
+  toolResults,
+}: {
+  stages: DemoContextStageState[];
+  toolResults: DemoSessionState['toolResults'] | undefined;
+}) => (
   <div className="tab-stages-content">
     <div className="drawer-section-heading">
       <span className="heading-eyebrow">PIPELINE EXECUTION STAGES</span>
     </div>
 
     <div className="stages-timeline-list">
+      {toolResults && toolResults.total > 0 ? (
+        <div className="stage-timeline-card is-history-stage">
+          <div className="stage-card-header">
+            <span className="stage-number-chip">
+              <Wrench size={10} />
+            </span>
+            <strong className="stage-name">history</strong>
+            <span className="stage-scope-chip scope-generation">generation</span>
+          </div>
+          <div className="stage-meta-row">
+            <span className="stage-pos-text">tool results rewritten once per generation</span>
+            <span className="stage-token-count">
+              {toolResults.collapsed}/{toolResults.total} collapsed
+            </span>
+          </div>
+        </div>
+      ) : null}
+
       {stages.map((stage: DemoContextStageState, idx: number) => {
-        const replayTag = stage.replayed ? 'replayed' : `built ×${stage.buildCount}`;
+        let replayTag = stage.replayed ? 'replayed' : `built ×${stage.buildCount}`;
+        if (stage.pinCount !== undefined) replayTag = `pinned ×${stage.pinCount}`;
 
         return (
           <div className="stage-timeline-card" key={stage.id}>
@@ -116,7 +142,7 @@ const StagesTab = ({ stages }: { stages: DemoContextStageState[] }) => (
               <span className="stage-number-chip">0{idx + 1}</span>
               <strong className="stage-name">{stage.phase}</strong>
               <span className={`stage-scope-chip scope-${stage.cacheScope}`}>
-                {stage.cacheScope}
+                {stage.pinCount === undefined ? stage.cacheScope : `pinned · ${stage.cacheScope}`}
               </span>
             </div>
 
@@ -170,7 +196,7 @@ export const TelemetryDrawer = ({
       return <MetricsTab latestTurn={latestTurn} snapshot={snapshot} summary={summary} />;
     }
     if (activeTab === 'stages') {
-      return <StagesTab stages={stages} />;
+      return <StagesTab stages={stages} toolResults={state?.toolResults} />;
     }
     if (activeTab === 'anatomy') {
       return (

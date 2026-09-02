@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createDemoContextModule,
+  isCollapsedToolResult,
   type DemoInitialContext,
   type DemoMetadata,
   type DemoServices,
@@ -110,6 +111,66 @@ describe('real-agent demo integration', () => {
     expect(buildCounts.get('demo.workspace-context')).toBe(1);
     expect(buildCounts.get('demo.request-context')).toBe(2);
     expect(buildCounts.get('demo.runtime-tail')).toBe(2);
+  });
+
+  it('pins request context per user message and collapses older tool results after a new generation', async () => {
+    const engine = createPiMessageEngine<
+      DemoInitialContext,
+      DemoStepContext,
+      DemoServices,
+      DemoMetadata
+    >({
+      baseSystemPrompt: 'Base system prompt',
+      initial: {
+        experiment: 'pin-and-rewrite-test',
+        policy: 'research-only',
+        startedAt: '2026-08-13T00:00:00.000Z',
+        workspace: 'Kansoku Trading Desk',
+      },
+      modules: [createDemoContextModule()],
+      services: { recordContextBuild: () => {} },
+      sessionId: 'pin-and-rewrite-test',
+    });
+    const step = (requestedAt: string): DemoStepContext => ({
+      modelId: 'openai/gpt-4o-mini',
+      providerTurn: 1,
+      requestedAt,
+      route: '/markets/MU.US',
+      selection: 'MU.US · daily candle',
+    });
+    const user = (text: string, timestamp: number): AgentMessage =>
+      ({ content: [{ text, type: 'text' }], role: 'user', timestamp }) as AgentMessage;
+    const toolResult = (toolCallId: string, symbol: string): AgentMessage =>
+      ({
+        content: [{ text: JSON.stringify({ candles: [1, 2, 3], symbol }), type: 'text' }],
+        role: 'toolResult',
+        timestamp: 5,
+        toolCallId,
+        toolName: 'market_snapshot',
+      }) as AgentMessage;
+
+    engine.append([user('Snapshot MU.US', 1)]);
+    await engine.compileTurn({ step: step('2026-08-13T00:00:01.000Z') });
+    engine.append([toolResult('call-1', 'MU.US')]);
+    const loop = await engine.compileTurn({ step: step('2026-08-13T00:00:01.000Z') });
+    const loopTexts = loop.messages.map(toDemoMessageView).map((message) => message.text);
+    expect(loopTexts[1]).toContain('sent_at=2026-08-13T00:00:01.000Z');
+    expect(loopTexts[2]).not.toContain('[collapsed tool result]');
+
+    engine.append([user('Now NVDA', 6), toolResult('call-2', 'NVDA')]);
+    const second = await engine.compileTurn({ step: step('2026-08-13T00:00:09.000Z') });
+    const secondTexts = second.messages.map(toDemoMessageView).map((message) => message.text);
+    expect(secondTexts[1]).toContain('sent_at=2026-08-13T00:00:01.000Z');
+    expect(secondTexts[3]).toContain('sent_at=2026-08-13T00:00:09.000Z');
+    expect(secondTexts[2]).not.toContain('[collapsed tool result]');
+    expect(second.messages.filter(isCollapsedToolResult)).toHaveLength(0);
+
+    await engine.invalidatePrefix({ expected: true, reason: 'content-changed' });
+    const third = await engine.compileTurn({ step: step('2026-08-13T00:00:09.000Z') });
+    const thirdTexts = third.messages.map(toDemoMessageView).map((message) => message.text);
+    expect(thirdTexts[2]).toContain('[collapsed tool result] market_snapshot for MU.US');
+    expect(thirdTexts[4]).toContain('"symbol":"NVDA"');
+    expect(third.messages.filter(isCollapsedToolResult)).toHaveLength(1);
   });
 
   it('exposes the OpenRouter catalog with pricing and cache information', () => {

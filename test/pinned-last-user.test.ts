@@ -38,6 +38,15 @@ const createTestAdapter = (): MessageAdapter<TestMessage> => ({
   getToolResultId: (message) => message.toolCallId,
 });
 
+const pinContent = (processorId: string, text: string) => ({
+  cacheScope: 'session' as const,
+  id: `${processorId}:content`,
+  moduleId: 'carriers',
+  processorId,
+  sourceType: 'knowledge' as const,
+  text,
+});
+
 const message = (content: string, role: TestMessage['role'] = 'user'): TestMessage => ({
   content,
   role,
@@ -377,11 +386,19 @@ describe('pinned last-user contributions', () => {
     const lastUserPins = new Map([
       [
         lastUserPinKey('first.carrier', 'first.carrier:content'),
-        { kind: 'carrier' as const, insertAt: 2, text: 'first carrier' },
+        {
+          content: pinContent('first.carrier', 'first carrier'),
+          insertAt: 2,
+          kind: 'carrier' as const,
+        },
       ],
       [
         lastUserPinKey('second.carrier', 'second.carrier:content'),
-        { kind: 'carrier' as const, insertAt: 3, text: 'second carrier' },
+        {
+          content: pinContent('second.carrier', 'second carrier'),
+          insertAt: 3,
+          kind: 'carrier' as const,
+        },
       ],
     ]);
 

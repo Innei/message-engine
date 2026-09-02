@@ -23,6 +23,7 @@ export interface DemoContextStageState {
   id: string;
   modelPosition: string;
   phase: PipelinePhase;
+  pinCount?: number;
   replayed: boolean;
   sourceType: SegmentTokenRecord['sourceType'];
   tokens: number;
@@ -44,6 +45,7 @@ export interface DemoMessageView {
   role: 'assistant' | 'tool' | 'user';
   stopReason?: string;
   text: string;
+  toolName?: string;
 }
 
 export interface DemoSessionState {
@@ -56,6 +58,7 @@ export interface DemoSessionState {
   sessionId: string;
   strict: boolean;
   summary?: SessionTokenSummary;
+  toolResults: { collapsed: number; total: number };
 }
 
 export interface DemoMutationResult {

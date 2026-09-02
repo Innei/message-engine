@@ -392,9 +392,11 @@ export class PipelineExecutionContext<
       );
     if (selected.length === 0) return;
 
-    this.appliedContributionList.push(
-      ...selected.map(({ sequence: _, ...contribution }) => contribution),
-    );
+    if (slot !== 'pinned-user') {
+      this.appliedContributionList.push(
+        ...selected.map(({ sequence: _, ...contribution }) => contribution),
+      );
+    }
 
     const content = selected.map((entry) => entry.content.text).join('\n\n');
     const cacheScope = selected.every((entry) => entry.content.cacheScope === 'session')
@@ -427,6 +429,7 @@ export class PipelineExecutionContext<
         messageIds: this.messageIds,
         messageList: this.messageList,
       });
+      this.appliedContributionList.push(...result.applied);
       if (result.indexDirty) this.indexDirty = true;
     } else if (slot === 'last-user') {
       applyLastUserContributions({

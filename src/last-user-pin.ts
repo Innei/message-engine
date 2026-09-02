@@ -2,10 +2,11 @@ import { PipelineConfigurationError } from './errors.js';
 import { fingerprint } from './fingerprint.js';
 import type { MessageAdapter } from './message-adapter.js';
 import type { StoredContribution } from './pipeline.js';
+import type { AttributedContent, ContextContribution } from './types.js';
 
 export type LastUserPin =
-  | { kind: 'message'; rawMessageId: string; text: string }
-  | { kind: 'carrier'; insertAt: number; text: string };
+  | { kind: 'message'; rawMessageId: string; content: AttributedContent }
+  | { kind: 'carrier'; insertAt: number; content: AttributedContent };
 
 export const lastUserPinKey = (processorId: string, contentId: string): string =>
   `${processorId}:${contentId}`;
@@ -38,19 +39,21 @@ interface ApplyInput<Message> {
 
 export const applyPinnedUserContributions = <Message>(
   input: ApplyInput<Message> & { lastUserPins: Map<string, LastUserPin> },
-): { indexDirty: boolean } => {
+): { applied: ContextContribution[]; indexDirty: boolean } => {
   const { adapter, committedRawIds, hostLastUserId, lastUserPins, messageIds, messageList } = input;
   const initialLength = messageList.length;
+  const applied: ContextContribution[] = [];
 
   const carriers: Array<Extract<LastUserPin, { kind: 'carrier' }>> = [];
   for (const pin of lastUserPins.values()) {
+    applied.push({ content: pin.content, slot: 'pinned-user' });
     if (pin.kind === 'carrier') carriers.push(pin);
-    else appendTo(adapter, messageList, messageIds.indexOf(pin.rawMessageId), pin.text);
+    else appendTo(adapter, messageList, messageIds.indexOf(pin.rawMessageId), pin.content.text);
   }
   carriers.sort((left, right) => left.insertAt - right.insertAt);
   for (const pin of carriers) {
-    messageList.splice(pin.insertAt, 0, adapter.createUserMessage(pin.text));
-    messageIds.splice(pin.insertAt, 0, carrierMessageId(pin.text));
+    messageList.splice(pin.insertAt, 0, adapter.createUserMessage(pin.content.text));
+    messageIds.splice(pin.insertAt, 0, carrierMessageId(pin.content.text));
   }
 
   const hostLastUser = hostLastUserId === undefined ? -1 : messageIds.lastIndexOf(hostLastUserId);
@@ -59,19 +62,20 @@ export const applyPinnedUserContributions = <Message>(
     for (const contribution of input.contributions) {
       const key = pinKey(contribution, hostLastUserId);
       if (lastUserPins.has(key)) continue;
-      const { text } = contribution.content;
+      const { content } = contribution;
+      applied.push({ content, slot: 'pinned-user' });
       if (committed) {
-        lastUserPins.set(key, { insertAt: messageList.length, kind: 'carrier', text });
-        messageList.push(adapter.createUserMessage(text));
-        messageIds.push(carrierMessageId(text));
+        lastUserPins.set(key, { content, insertAt: messageList.length, kind: 'carrier' });
+        messageList.push(adapter.createUserMessage(content.text));
+        messageIds.push(carrierMessageId(content.text));
       } else {
-        appendTo(adapter, messageList, hostLastUser, text);
-        lastUserPins.set(key, { kind: 'message', rawMessageId: hostLastUserId, text });
+        appendTo(adapter, messageList, hostLastUser, content.text);
+        lastUserPins.set(key, { content, kind: 'message', rawMessageId: hostLastUserId });
       }
     }
   }
 
-  return { indexDirty: messageList.length !== initialLength };
+  return { applied, indexDirty: messageList.length !== initialLength };
 };
 
 export const applyLastUserContributions = <Message>(input: ApplyInput<Message>): void => {

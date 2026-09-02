@@ -240,6 +240,12 @@ export const App = () => {
     }
     setSession(event.state);
     setMessages(event.state.messages);
+    if (event.state.toolResults.total > 0) {
+      addTrace(
+        'info',
+        `Tool results in compiled prompt: ${event.state.toolResults.total}, collapsed by history rewrite: ${event.state.toolResults.collapsed}.`,
+      );
+    }
   };
 
   const runTurn = async (): Promise<void> => {
