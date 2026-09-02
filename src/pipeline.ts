@@ -203,6 +203,7 @@ export class PipelineExecutionContext<
   private activeProcessorId = 'engine';
   private contributionSequence = 0;
   private indexDirty = false;
+  private pinsReplayed = false;
   private messageList: Message[];
   private messageIds: string[];
   private mutationRevision = 0;
@@ -390,7 +391,8 @@ export class PipelineExecutionContext<
           (left.order ?? left.sequence) - (right.order ?? right.sequence) ||
           left.sequence - right.sequence,
       );
-    if (selected.length === 0) return;
+    const replayPins = slot === 'pinned-user' && !this.pinsReplayed && this.lastUserPins.size > 0;
+    if (selected.length === 0 && !replayPins) return;
 
     if (slot !== 'pinned-user') {
       this.appliedContributionList.push(
@@ -428,7 +430,9 @@ export class PipelineExecutionContext<
         lastUserPins: this.lastUserPins,
         messageIds: this.messageIds,
         messageList: this.messageList,
+        replay: !this.pinsReplayed,
       });
+      this.pinsReplayed = true;
       this.appliedContributionList.push(...result.applied);
       if (result.indexDirty) this.indexDirty = true;
     } else if (slot === 'last-user') {

@@ -38,14 +38,15 @@ interface ApplyInput<Message> {
 }
 
 export const applyPinnedUserContributions = <Message>(
-  input: ApplyInput<Message> & { lastUserPins: Map<string, LastUserPin> },
+  input: ApplyInput<Message> & { lastUserPins: Map<string, LastUserPin>; replay: boolean },
 ): { applied: ContextContribution[]; indexDirty: boolean } => {
   const { adapter, committedRawIds, hostLastUserId, lastUserPins, messageIds, messageList } = input;
   const initialLength = messageList.length;
   const applied: ContextContribution[] = [];
 
   const carriers: Array<Extract<LastUserPin, { kind: 'carrier' }>> = [];
-  for (const pin of lastUserPins.values()) {
+  const replayed = input.replay ? [...lastUserPins.values()] : [];
+  for (const pin of replayed) {
     applied.push({ content: pin.content, slot: 'pinned-user' });
     if (pin.kind === 'carrier') carriers.push(pin);
     else appendTo(adapter, messageList, messageIds.indexOf(pin.rawMessageId), pin.content.text);

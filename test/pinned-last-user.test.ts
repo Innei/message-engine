@@ -409,6 +409,7 @@ describe('pinned last-user contributions', () => {
       lastUserPins,
       messageIds,
       messageList,
+      replay: true,
       contributions: [
         {
           processorCacheScope: 'session',
@@ -622,6 +623,39 @@ describe('pinned last-user contributions', () => {
       'ask',
       'call',
       'result',
+      'answer',
+      'follow up',
+    ]);
+  });
+
+  it('replays existing pins on compiles where the provider contributes nothing', async () => {
+    let emit = true;
+    class OnceStamp extends BasePinnedUserProvider<
+      TestMessage,
+      { agent: string },
+      { turn: number },
+      Record<string, never>,
+      { visited?: boolean }
+    > {
+      readonly id = 'once.stamp';
+      constructor() {
+        super({ cacheScope: 'turn' });
+      }
+      protected build() {
+        if (!emit) return null;
+        emit = false;
+        return 'pinned once';
+      }
+    }
+    const engine = createEngine({
+      modules: [{ id: 'stamp', processors: [new OnceStamp()] }],
+    });
+    engine.append([message('ask')]);
+    await engine.compileTurn({ step: { turn: 1 } });
+    engine.append([message('answer', 'assistant'), message('follow up')]);
+    const second = await engine.compileTurn({ step: { turn: 2 } });
+    expect(second.messages.map((item) => item.content)).toEqual([
+      'ask\n\npinned once',
       'answer',
       'follow up',
     ]);
