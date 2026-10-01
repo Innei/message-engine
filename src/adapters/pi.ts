@@ -10,7 +10,7 @@ import { SessionMessagesEngine } from '../session-engine.js';
 import type { TokenSourceType } from '../token-types.js';
 import type { SessionMessagesEngineOptions } from '../types.js';
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
+const isRecord = <T>(value: T): value is T & Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
 const piMessageEngineContext = Symbol('message-engine.pi.context');
@@ -20,7 +20,9 @@ type ContextTaggedAgentMessage = AgentMessage & {
 };
 
 export interface PiSystemPromptBridge {
-  apply<Context extends object>(context: Context): Context & { systemPrompt: string };
+  apply<Context extends { messages: readonly unknown[] }>(
+    context: Context,
+  ): Context & { systemPrompt?: string };
   capture(result: { systemPrompt: string }): void;
   readonly current: string;
 }
@@ -35,7 +37,17 @@ export const createPiSystemPromptBridge = (initialSystemPrompt: string): PiSyste
   let current = initialSystemPrompt;
 
   return {
-    apply: (context) => ({ ...context, systemPrompt: current }),
+    apply: (context) => {
+      // pi 0.86+ carries the prompt as a system message in the transcript;
+      // setting `systemPrompt` there would prepend a second one.
+      const index = context.messages.findIndex(
+        (message) => isRecord(message) && message.role === 'system',
+      );
+      if (index === -1) return { ...context, systemPrompt: current };
+      const messages = [...context.messages];
+      messages[index] = { ...(messages[index] as object), content: current };
+      return { ...context, messages };
+    },
     capture: (result) => {
       current = result.systemPrompt;
     },

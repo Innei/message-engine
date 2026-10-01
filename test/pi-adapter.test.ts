@@ -20,6 +20,19 @@ describe('Pi adapter', () => {
       messages: [],
       systemPrompt: 'base prompt\n\ntenant policy',
     });
+    expect(
+      bridge.apply({
+        messages: [
+          { content: 'stale Pi snapshot', role: 'system', timestamp: 1, toolsAdded: [] },
+          { content: 'hi', role: 'user', timestamp: 2 },
+        ],
+      }),
+    ).toEqual({
+      messages: [
+        { content: 'base prompt\n\ntenant policy', role: 'system', timestamp: 1, toolsAdded: [] },
+        { content: 'hi', role: 'user', timestamp: 2 },
+      ],
+    });
   });
 
   it('places an explicit cache breakpoint on the stable Pi prefix', async () => {

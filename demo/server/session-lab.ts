@@ -639,7 +639,9 @@ export class DemoAgentSession {
       contextStages: this.contextStages(),
       generation: this.engine.generation,
       instanceId: this.instanceId,
-      messages: this.agent.state.messages.map(toDemoMessageView),
+      messages: this.agent.state.messages
+        .filter((message) => message.role !== 'system')
+        .map(toDemoMessageView),
       modelId: this.modelId,
       sessionId: this.sessionId,
       strict: this.strict,
